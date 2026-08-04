@@ -15,7 +15,7 @@
 ## Progress
 
 - [x] Slice 1 — Load a strict Definition catalog
-- [ ] Slice 2 — Run and resume a blocking direct subagent
+- [x] Slice 2 — Run and resume a blocking direct subagent
 - [ ] Slice 3 — Coordinate a nested structured runtime tree
 - [ ] Slice 4 — Run asynchronously and manage direct children
 - [ ] Slice 5 — Preserve Session semantics across Pi lifecycle changes
@@ -108,11 +108,20 @@ flowchart LR
 
 ### Slice 2 — Run and resume a blocking direct subagent
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 The main agent can run one direct child synchronously, receive only its terminal text result, persist the child as native Pi JSONL, list it on the owning branch, and resume it under any currently permitted Definition.
+
+**Completed work**
+
+- Registered the complete caller-constrained action schema and implemented blocking `run`, active direct-child listing, and branch-visible native Session listing.
+- Added native master-namespaced Session creation/opening, durable parent ownership entries, branch visibility, one-live-binding locks, Definition-independent resume, and idempotent shutdown cancellation.
+- Added the headless Pi child adapter with normal resource loading, append-slot Definition injection, invocation-time model/global-thinking resolution, extension binding, exact tool revalidation, task-only prompting, disposal, and caller abort propagation.
+- Added terminal-assistant final-text extraction, compact Session previews, and shared Pi-ceiling truncation while preserving complete native child transcripts.
+- Validation: `npm test -- test/blocking-run.test.ts test/sessions.test.ts test/prompt-resolution.test.ts` (13 tests passed); `npm run typecheck` (passed); full `npm test` (42 tests passed); `npm pack --dry-run` (passed, 6 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
+- Deviations: Pi 0.83 defers a newly allocated Session's first JSONL write until an assistant response. Creation therefore writes the header returned by `SessionManager.create()` immediately and reopens it through `SessionManager.open()` so authentication/startup failures remain durable and resumable; native IDs, filenames, format, and all subsequent writes remain Pi-managed.
 
 **Scope**
 

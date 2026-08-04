@@ -33,14 +33,29 @@ describe("Pi package metadata", () => {
     const pi = {
       on: vi.fn((event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler)),
       getAllTools: vi.fn(() => [{ name: "read" }]),
+      appendEntry: vi.fn(),
+      registerTool: vi.fn(),
     };
     const extension = createCooperateExtension({ agentDir: resolve("test/fixtures/missing-agent-dir") });
 
     extension(pi as never);
     expect([...handlers.keys()]).toEqual(["session_start", "session_shutdown"]);
 
-    const context = { modelRegistry: { find: vi.fn() } };
+    const context = {
+      cwd: "/project",
+      modelRegistry: { find: vi.fn() },
+      sessionManager: { getSessionId: () => "master-id", getBranch: () => [] },
+    };
     await handlers.get("session_start")?.({}, context);
+    expect(pi.registerTool).toHaveBeenCalledOnce();
+    const tool = pi.registerTool.mock.calls[0][0] as {
+      name: string;
+      parameters: { anyOf: Array<{ properties: { action: { const: string } } }> };
+    };
+    expect(tool.name).toBe("subagent");
+    expect(tool.parameters.anyOf.map((shape) => shape.properties.action.const)).toEqual([
+      "run", "list-subagents", "list-sessions", "wait", "cancel",
+    ]);
     await handlers.get("session_shutdown")?.({}, context);
     await handlers.get("session_shutdown")?.({}, context);
   });
