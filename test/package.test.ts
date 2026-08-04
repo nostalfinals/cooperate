@@ -39,7 +39,9 @@ describe("Pi package metadata", () => {
     const extension = createCooperateExtension({ agentDir: resolve("test/fixtures/missing-agent-dir") });
 
     extension(pi as never);
-    expect([...handlers.keys()]).toEqual(["session_start", "before_agent_start", "agent_end", "session_shutdown"]);
+    expect([...handlers.keys()]).toEqual([
+      "agent_start", "agent_end", "message_end", "session_start", "before_agent_start", "session_shutdown",
+    ]);
 
     const context = {
       cwd: "/project",

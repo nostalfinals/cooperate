@@ -4,6 +4,7 @@ import {
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, loadCatalog, type DefinitionCatalog } from "./catalog.ts";
+import { createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory, type ChildRuntimeFactory } from "./runtime.ts";
 import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
@@ -37,6 +38,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
 
   return (pi: ExtensionAPI) => {
     let state: SessionCatalogState | undefined;
+    const continuation = createPiContinuationHost(pi);
 
     pi.on("session_start", async (_event, ctx) => {
       await state?.shutdown();
@@ -57,6 +59,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         store,
         runtimeFactory,
         agentDir,
+        continuation,
         persistOwnership: async (sessionId) => {
           pi.appendEntry(OWNERSHIP_ENTRY, { sessionId });
         },

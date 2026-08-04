@@ -10,6 +10,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition, CallerCatalog } from "./catalog.ts";
+import { createPiContinuationHost, type ContinuationHost } from "./continuation.ts";
 import type { TerminalCause } from "./coordinator.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { createSubagentDiscoveryTool } from "./subagent.ts";
@@ -23,6 +24,7 @@ export interface ChildInvocation {
   creatorModel: unknown;
   task: string;
   subagentTool?: ToolDefinition;
+  onContinuationHost?(host: ContinuationHost): void;
   onAgentEnd?(cause: TerminalCause): Promise<void>;
 }
 
@@ -162,6 +164,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       name: "cooperate-structured-scope",
       hidden: true,
       factory: (pi) => {
+        invocation.onContinuationHost?.(createPiContinuationHost(pi));
         pi.on("agent_end", async (event) => {
           if (!invocation.onAgentEnd) return;
           const failure = terminalFailure(event.messages, 0);

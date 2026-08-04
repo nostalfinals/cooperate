@@ -18,13 +18,13 @@
 - [x] Slice 2 — Run and resume a blocking direct subagent
 - [x] Slice 3 — Move Definition discovery into the prompt and tool action
 - [x] Slice 4 — Coordinate a nested structured runtime tree
-- [ ] Slice 5 — Run asynchronously and manage direct children
+- [x] Slice 5 — Run asynchronously and manage direct children
 - [ ] Slice 6 — Preserve Session semantics across Pi lifecycle changes
 - [ ] Slice 7 — Deliver the complete TUI presentation
 
 ## Current codebase state
 
-Slices 1 through 3 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, a blocking direct-child runtime, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, caller-scoped Definition discovery in Pi's append-system slot, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/index.ts`, `src/prompt.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking runs, prompts, Definition discovery, and Sessions.
+Slices 1 through 5 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, blocking and asynchronous structured child runtimes, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, caller-scoped Definition discovery, direct-child management, gated custom completion delivery, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/continuation.ts`, `src/coordinator.ts`, `src/index.ts`, `src/prompt.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking and async runs, nested coordination, continuation routing, management actions, prompts, Definition discovery, Sessions, and Working lifecycle.
 
 The implementation targets the locally installed Pi 0.83.0 APIs. Pi provides the remaining primitives: structured system-prompt options in `before_agent_start`, `DefaultResourceLoader` overrides, independent SDK AgentSessions, native JSONL `SessionManager`, custom entries and messages, awaited extension lifecycle handlers, abort signals, dynamic tool renderers, and overlay TUI components.
 
@@ -230,11 +230,19 @@ Any permitted child can create its own direct children up to `maxDepth`; active 
 
 ### Slice 5 — Run asynchronously and manage direct children
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 An agent can start direct children asynchronously, continue its own work, list/wait for/cancel those children, and automatically resume when each terminal notification arrives while Pi's native Working state covers the complete descendant tree.
+
+**Completed work**
+
+- Added prompt-independent asynchronous startup with transient and Session identity acknowledgement, exact direct-child capture for wait/cancel, and shared blocking/async terminal cleanup over the structured coordinator.
+- Added persisted exactly-once completion messages with tool-result commit gating, steer/follow-up routing from the parent's logical phase, independent completion delivery, explicit-cancel reporting, and lifecycle/cascade cancellation suppression.
+- Bound continuation adapters in the main and every child Pi runtime, retained aggregate `agent_end` waiting, and completed management action dispatch/results without broadening caller visibility.
+- Validation: `npm test -- test/async-run.test.ts test/management-actions.test.ts test/continuation.test.ts test/working-lifecycle.test.ts` (8 tests passed); `npm run typecheck` (passed); full `npm test` (65 tests passed); `npm pack --dry-run` (passed, 9 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
+- Deviations: None.
 
 **Scope**
 
