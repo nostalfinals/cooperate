@@ -92,7 +92,11 @@ describe("main prompt discovery", () => {
       await handlers.get("session_start")?.[0]?.({}, {
         cwd: "/project",
         modelRegistry: { find: vi.fn() },
-        sessionManager: { getSessionId: () => "master", getBranch: () => [] },
+        sessionManager: {
+          getSessionId: () => "master",
+          getSessionDir: () => join(agentDir, "sessions"),
+          getBranch: () => [],
+        },
       });
 
       const before = handlers.get("before_agent_start")?.[0];

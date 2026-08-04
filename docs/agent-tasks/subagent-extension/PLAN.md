@@ -19,12 +19,12 @@
 - [x] Slice 3 — Move Definition discovery into the prompt and tool action
 - [x] Slice 4 — Coordinate a nested structured runtime tree
 - [x] Slice 5 — Run asynchronously and manage direct children
-- [ ] Slice 6 — Preserve Session semantics across Pi lifecycle changes
+- [x] Slice 6 — Preserve Session semantics across Pi lifecycle changes
 - [ ] Slice 7 — Deliver the complete TUI presentation
 
 ## Current codebase state
 
-Slices 1 through 5 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, blocking and asynchronous structured child runtimes, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, caller-scoped Definition discovery, direct-child management, gated custom completion delivery, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/continuation.ts`, `src/coordinator.ts`, `src/index.ts`, `src/prompt.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking and async runs, nested coordination, continuation routing, management actions, prompts, Definition discovery, Sessions, and Working lifecycle.
+Slices 1 through 6 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, blocking and asynchronous structured child runtimes, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, caller-scoped Definition discovery, direct-child management, gated custom completion delivery, lifecycle cancellation, atomic fork/clone namespace copying, orphan cleanup, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/continuation.ts`, `src/coordinator.ts`, `src/index.ts`, `src/lifecycle.ts`, `src/prompt.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking and async runs, nested coordination, continuation routing, management actions, prompts, Definition discovery, Sessions, Working lifecycle, branch visibility, Session lifecycle, master forks, and orphan collection.
 
 The implementation targets the locally installed Pi 0.83.0 APIs. Pi provides the remaining primitives: structured system-prompt options in `before_agent_start`, `DefaultResourceLoader` overrides, independent SDK AgentSessions, native JSONL `SessionManager`, custom entries and messages, awaited extension lifecycle handlers, abort signals, dynamic tool renderers, and overlay TUI components.
 
@@ -276,11 +276,19 @@ An agent can start direct children asynchronously, continue its own work, list/w
 
 ### Slice 6 — Preserve Session semantics across Pi lifecycle changes
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 Child ownership and data remain correct through compaction, branch navigation, master resume, `/fork`, and `/clone`; replacement and shutdown cancel live work safely; startup can remove only genuinely orphaned master directories.
+
+**Completed work**
+
+- Kept ownership derived live from native branch custom entries, verified compaction and branch switching, and made tree navigation and interrupted main turns cancel and await the complete active runtime while preserving reuse after navigation.
+- Added fork/clone startup handling that resolves the previous master through Pi Session metadata, flushes the old runtime, copies the complete child namespace through a sibling stage, rejects collisions, atomically publishes the copy, and reopens copied children at fresh absolute paths without changing IDs or bytes.
+- Added post-copy orphan selection against native master Session headers, configured trash-first deletion with recursive fallback, and verified fresh runtimes treat crash-left child JSONL as unlocked resumable data.
+- Validation: `npm test -- test/branch-visibility.test.ts test/session-lifecycle.test.ts` (5 tests passed); `npm test -- test/master-fork.test.ts test/orphan-gc.test.ts` (6 tests passed); `npm run typecheck` (passed); full `npm test` (76 tests passed).
+- Deviations: None.
 
 **Scope**
 

@@ -72,6 +72,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+export function isAbortedAgentEnd(messages: readonly unknown[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (isRecord(message) && message.role === "assistant") return message.stopReason === "aborted";
+  }
+  return false;
+}
+
 export function extractFinalText(messages: readonly unknown[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
@@ -257,22 +265,26 @@ export class BlockingSubagentService {
     return this.coordinator.waitForDescendants(this.parentId);
   }
 
-  async shutdown(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
+  async cancelActive(reason: string): Promise<void> {
     for (const handle of this.active.values()) {
       handle.suppressNotification = true;
       handle.resolveNotificationSuppressed();
     }
     if (this.parentId) {
       for (const child of this.coordinator.directChildren(this.parentId)) {
-        this.coordinator.requestCancel(child.subagentId, "runtime shutting down");
+        this.coordinator.requestCancel(child.subagentId, reason);
       }
       await this.coordinator.waitForDescendants(this.parentId);
     } else {
-      await this.coordinator.cancelAll("runtime shutting down");
+      await this.coordinator.cancelAll(reason);
     }
     await Promise.all([...this.active.values()].map((handle) => handle.done));
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.cancelActive("runtime shutting down");
   }
 
   private captureDirect(ids: readonly string[]): ActiveExecution[] {

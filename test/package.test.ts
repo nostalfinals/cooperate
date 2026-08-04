@@ -40,13 +40,17 @@ describe("Pi package metadata", () => {
 
     extension(pi as never);
     expect([...handlers.keys()]).toEqual([
-      "agent_start", "agent_end", "message_end", "session_start", "before_agent_start", "session_shutdown",
+      "agent_start", "agent_end", "message_end", "session_start", "before_agent_start", "session_before_tree", "session_shutdown",
     ]);
 
     const context = {
       cwd: "/project",
       modelRegistry: { find: vi.fn() },
-      sessionManager: { getSessionId: () => "master-id", getBranch: () => [] },
+      sessionManager: {
+        getSessionId: () => "master-id",
+        getSessionDir: () => resolve("test/fixtures/missing-agent-dir/sessions"),
+        getBranch: () => [],
+      },
     };
     await handlers.get("session_start")?.({}, context);
     expect(pi.registerTool).toHaveBeenCalledOnce();

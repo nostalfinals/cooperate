@@ -8,7 +8,13 @@ import { createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory, type ChildRuntimeFactory } from "./runtime.ts";
 import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
-import { BlockingSubagentService, createSubagentTool } from "./subagent.ts";
+import { BlockingSubagentService, createSubagentTool, isAbortedAgentEnd } from "./subagent.ts";
+import {
+  collectMasterSessionIds,
+  copyMasterSessionDirectory,
+  garbageCollectOrphanSessions,
+  masterSessionIdFromFile,
+} from "./lifecycle.ts";
 
 export interface CooperateExtensionOptions {
   agentDir?: string;
@@ -40,7 +46,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     let state: SessionCatalogState | undefined;
     const continuation = createPiContinuationHost(pi);
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", async (event, ctx) => {
       await state?.shutdown();
       state = undefined;
 
@@ -49,9 +55,25 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         availableTools: new Set([...pi.getAllTools().map((tool) => tool.name), "subagent"]),
         modelRegistry: ctx.modelRegistry,
       });
+      const masterSessionId = ctx.sessionManager.getSessionId();
+      if (event.reason === "fork" && event.previousSessionFile) {
+        await copyMasterSessionDirectory(
+          agentDir,
+          masterSessionIdFromFile(event.previousSessionFile),
+          masterSessionId,
+        );
+      }
+      if (catalog.config.gcOrphanSessions) {
+        const existingMasterIds = await collectMasterSessionIds(
+          agentDir,
+          [ctx.sessionManager.getSessionDir()],
+        );
+        existingMasterIds.add(masterSessionId);
+        await garbageCollectOrphanSessions(agentDir, existingMasterIds);
+      }
       const store = new NativeSessionStore({
         agentDir,
-        masterSessionId: ctx.sessionManager.getSessionId(),
+        masterSessionId,
         cwd: ctx.cwd,
       });
       const service = new BlockingSubagentService({
@@ -77,8 +99,13 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       };
     });
 
-    pi.on("agent_end", async () => {
-      await state?.service.waitForDescendants();
+    pi.on("agent_end", async (event) => {
+      if (isAbortedAgentEnd(event.messages)) await state?.service.cancelActive("main agent interrupted");
+      else await state?.service.waitForDescendants();
+    });
+
+    pi.on("session_before_tree", async () => {
+      await state?.service.cancelActive("Session tree navigation");
     });
 
     pi.on("session_shutdown", async () => {
