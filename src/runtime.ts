@@ -5,10 +5,12 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   type AgentSessionServices,
+  type InlineExtension,
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition, CallerCatalog } from "./catalog.ts";
+import type { TerminalCause } from "./coordinator.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { createSubagentDiscoveryTool } from "./subagent.ts";
 
@@ -20,6 +22,8 @@ export interface ChildInvocation {
   record: SessionRecord;
   creatorModel: unknown;
   task: string;
+  subagentTool?: ToolDefinition;
+  onAgentEnd?(cause: TerminalCause): Promise<void>;
 }
 
 export interface ChildRun {
@@ -60,7 +64,10 @@ interface RuntimeSdk {
   createServices(options: {
     cwd: string;
     agentDir?: string;
-    resourceLoaderOptions: { appendSystemPromptOverride: (base: string[]) => string[] };
+    resourceLoaderOptions: {
+      appendSystemPromptOverride: (base: string[]) => string[];
+      extensionFactories?: InlineExtension[];
+    };
   }): Promise<ServicesLike>;
   createSession(options: {
     services: ServicesLike;
@@ -151,6 +158,19 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
   }
 
   async start(invocation: ChildInvocation): Promise<ChildRun> {
+    const lifecycleExtension: InlineExtension = {
+      name: "cooperate-structured-scope",
+      hidden: true,
+      factory: (pi) => {
+        pi.on("agent_end", async (event) => {
+          if (!invocation.onAgentEnd) return;
+          const failure = terminalFailure(event.messages, 0);
+          await invocation.onAgentEnd(failure
+            ? { state: failure === "cancelled" ? "cancelled" : "failed", reason: failure }
+            : { state: "finished" });
+        });
+      },
+    };
     const services = await this.sdk.createServices({
       cwd: invocation.cwd,
       agentDir: invocation.agentDir,
@@ -160,6 +180,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
           ...base,
           invocation.definition.body,
         ],
+        extensionFactories: [lifecycleExtension],
       },
     });
     const resolved = resolveInvocationSettings(
@@ -177,7 +198,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       thinkingLevel: resolved.thinking,
       tools: [...invocation.definition.tools],
       customTools: invocation.definition.tools.includes("subagent")
-        ? [createSubagentDiscoveryTool(invocation.callerCatalog)]
+        ? [invocation.subagentTool ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
         : undefined,
     });
     const { session } = created;

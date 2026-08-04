@@ -116,6 +116,47 @@ describe("Pi child runtime adapter", () => {
     expect(result?.content).toEqual([{ type: "text", text: "No subagent is defined yet" }]);
   });
 
+  it("adds an awaited agent_end hook for the child's structured descendant scope", async () => {
+    let extensionFactories: Array<{ factory: (pi: any) => void }> | undefined;
+    let endHandler: ((event: { messages: any[] }) => Promise<void>) | undefined;
+    let release!: () => void;
+    const scope = new Promise<void>((resolve) => { release = resolve; });
+    const onAgentEnd = vi.fn(async () => scope);
+    const session = {
+      messages: [],
+      getAllTools: () => [],
+      getActiveToolNames: () => [],
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async (options) => {
+        extensionFactories = options.resourceLoaderOptions.extensionFactories as typeof extensionFactories;
+        return { modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } };
+      },
+      createSession: async () => ({ session, dispose: async () => session.dispose() }),
+    });
+
+    await factory.start({
+      cwd: "/project",
+      definition: { ...baseDefinition, tools: [] },
+      callerCatalog: emptyCaller,
+      record: { sessionId: "id", file: "/id", native: {} },
+      creatorModel: {},
+      task: "task",
+      onAgentEnd,
+    });
+    extensionFactories?.[0]?.factory({ on: (_event: string, handler: typeof endHandler) => { endHandler = handler; } });
+    const pending = endHandler?.({ messages: [{ role: "assistant", content: [], stopReason: "stop" }] });
+    await vi.waitFor(() => expect(onAgentEnd).toHaveBeenCalledWith({ state: "finished" }));
+    let settled = false;
+    void pending?.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+  });
+
   it("fails before prompting if any configured tool is unavailable or exact activation is weakened", async () => {
     const session = {
       messages: [],

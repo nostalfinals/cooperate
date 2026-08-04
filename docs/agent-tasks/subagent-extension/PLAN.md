@@ -17,7 +17,7 @@
 - [x] Slice 1 — Load a strict Definition catalog
 - [x] Slice 2 — Run and resume a blocking direct subagent
 - [x] Slice 3 — Move Definition discovery into the prompt and tool action
-- [ ] Slice 4 — Coordinate a nested structured runtime tree
+- [x] Slice 4 — Coordinate a nested structured runtime tree
 - [ ] Slice 5 — Run asynchronously and manage direct children
 - [ ] Slice 6 — Preserve Session semantics across Pi lifecycle changes
 - [ ] Slice 7 — Deliver the complete TUI presentation
@@ -185,11 +185,19 @@ Every main or child caller sees its own available Definitions at the top of the 
 
 ### Slice 4 — Coordinate a nested structured runtime tree
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 Any permitted child can create its own direct children up to `maxDepth`; active bindings form an observable structured tree in which failures are sibling-isolated, cancellation cascades downward, and every parent scope remains alive until its descendants stop.
+
+**Completed work**
+
+- Added a shared structured coordinator with collision-checked transient IDs, master-wide Session locks, depth enforcement, running/waiting state, immutable retained subtree snapshots, downward cancellation scopes, first-cause terminal transitions, and idempotent full-scope waiting.
+- Replaced the child discovery-only tool with caller-scoped nested coordination, persisted nested ownership in the parent child Session, enforced direct Definition permissions and pre-creation depth limits, and retained exact child tool activation.
+- Added awaited child and root `agent_end` scope hooks so parent lifecycle completion waits for descendant disposal, with failed-node descendant cancellation and structural sibling isolation.
+- Validation: `npm test -- test/coordinator.test.ts test/nested-run.test.ts test/structured-cancellation.test.ts` (9 tests passed); `npm run typecheck` (passed); full `npm test` (57 tests passed).
+- Deviations: None.
 
 **Scope**
 

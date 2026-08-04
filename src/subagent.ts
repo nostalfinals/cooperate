@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { Type, type TSchema } from "typebox";
 import type {
   AgentToolResult,
@@ -6,9 +5,10 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, type AgentDefinition, type CallerCatalog, type DefinitionCatalog } from "./catalog.ts";
+import { StructuredCoordinator, type TerminalCause } from "./coordinator.ts";
 import type { ChildRun, ChildRuntimeFactory } from "./runtime.ts";
 import type { SessionRecord, SessionStore } from "./sessions.ts";
-import { compactPreview, truncateForTool } from "./sessions.ts";
+import { compactPreview, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "./sessions.ts";
 
 export interface RunRequest {
   agent: string;
@@ -30,18 +30,14 @@ export interface BlockingSubagentOptions {
   persistOwnership(sessionId: string): Promise<void>;
   visibleSessionIds(): readonly string[];
   agentDir?: string;
+  coordinator?: StructuredCoordinator;
+  parentId?: string;
+  allowedDefinitions?: readonly string[];
 }
 
-interface ActiveBinding {
-  subagentId: string;
-  agent: string;
-  sessionId: string;
-  task: string;
-  startedAt: number;
-  run?: ChildRun;
-  abortRequested: boolean;
-  settled: Promise<void>;
-  resolveSettled(): void;
+interface NativeOwnershipSession {
+  appendCustomEntry(customType: string, data?: unknown): unknown;
+  getBranch(): readonly unknown[];
 }
 
 function errorMessage(error: unknown): string {
@@ -67,23 +63,21 @@ export function extractFinalText(messages: readonly unknown[]): string {
   return "<none>";
 }
 
-function generateId(active: ReadonlyMap<string, ActiveBinding>): string {
-  for (;;) {
-    const id = randomBytes(4).toString("hex");
-    if (!active.has(id)) return id;
-  }
-}
-
 export class BlockingSubagentService {
   private readonly options: BlockingSubagentOptions;
   private readonly definitions: ReadonlyMap<string, AgentDefinition>;
-  private readonly locks = new Set<string>();
-  private readonly active = new Map<string, ActiveBinding>();
+  private readonly coordinator: StructuredCoordinator;
+  private readonly parentId?: string;
   private disposed = false;
 
   constructor(options: BlockingSubagentOptions) {
     this.options = options;
-    this.definitions = new Map(options.catalog.definitions.map((definition) => [definition.name, definition]));
+    this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
+    this.parentId = options.parentId;
+    const allowed = options.allowedDefinitions ? new Set(options.allowedDefinitions) : undefined;
+    this.definitions = new Map(options.catalog.definitions
+      .filter((definition) => !allowed || allowed.has(definition.name))
+      .map((definition) => [definition.name, definition]));
   }
 
   async run(request: RunRequest, environment: RunEnvironment): Promise<{ sessionId: string; result: string }> {
@@ -92,80 +86,87 @@ export class BlockingSubagentService {
     const definition = this.definitions.get(request.agent);
     if (!definition) throw new Error(`Definition '${request.agent}' is not available to this caller`);
     if (request.task.trim().length === 0) throw new Error("task must be nonempty");
+    // Depth is knowable before touching durable Session state and must win over
+    // creation, ownership, and locking side effects.
+    this.coordinator.assertCanStart(this.parentId);
 
     let record: SessionRecord;
     if (request.sessionId) {
       if (!this.options.visibleSessionIds().includes(request.sessionId)) {
         throw new Error(`Session '${request.sessionId}' is not a direct branch-visible child`);
       }
-      if (this.locks.has(request.sessionId)) throw new Error(`Session '${request.sessionId}' is locked`);
+      if (this.coordinator.isSessionLocked(request.sessionId)) throw new Error(`Session '${request.sessionId}' is locked`);
       record = await this.options.store.open(request.sessionId);
     } else {
       record = await this.options.store.create();
       await this.options.persistOwnership(record.sessionId);
     }
 
-    if (this.locks.has(record.sessionId)) throw new Error(`Session '${record.sessionId}' is locked`);
-    this.locks.add(record.sessionId);
-    const subagentId = generateId(this.active);
-    let resolveSettled!: () => void;
-    const binding: ActiveBinding = {
-      subagentId,
-      agent: definition.name,
+    if (definition.tools.includes("subagent") && !record.native) {
+      throw new Error("child Session record has no native SessionManager for nested ownership");
+    }
+    const started = this.coordinator.start({
+      parentId: this.parentId,
       sessionId: record.sessionId,
+      agent: definition.name,
       task: request.task,
-      startedAt: Date.now(),
-      abortRequested: false,
-      settled: new Promise<void>((resolve) => { resolveSettled = resolve; }),
-      resolveSettled: () => resolveSettled(),
-    };
-    this.active.set(subagentId, binding);
+    });
+    const subagentId = started.subagentId;
+    const callerCatalog = createCallerCatalog(this.options.catalog, definition.subagentAgents);
+    const nestedService = this.createNestedService(record, subagentId, definition);
+    const nestedTool = definition.tools.includes("subagent")
+      ? createSubagentTool(nestedService, callerCatalog)
+      : undefined;
 
     let run: ChildRun | undefined;
-    let abort: (() => void) | undefined;
+    let cause: TerminalCause = { state: "finished" };
+    const abortFromSignal = () => this.coordinator.requestCancel(subagentId, "caller aborted");
+    if (environment.signal?.aborted) abortFromSignal();
+    environment.signal?.addEventListener("abort", abortFromSignal, { once: true });
     try {
       run = await this.options.runtimeFactory.start({
         cwd: environment.cwd,
         agentDir: this.options.agentDir,
         definition,
-        callerCatalog: createCallerCatalog(this.options.catalog, definition.subagentAgents),
+        callerCatalog,
         record,
         creatorModel: environment.creatorModel,
         task: request.task,
+        subagentTool: nestedTool,
+        onAgentEnd: async (terminal) => {
+          this.coordinator.ownLoopEnded(subagentId, terminal);
+          await this.coordinator.waitForDescendants(subagentId);
+        },
       });
-      const currentRun = run;
-      binding.run = currentRun;
-      abort = () => currentRun.abort();
-      if (binding.abortRequested || environment.signal?.aborted) abort();
-      environment.signal?.addEventListener("abort", abort, { once: true });
+      this.coordinator.attachAbort(subagentId, () => run?.abort());
       await run.prompt(request.task);
+      this.coordinator.ownLoopEnded(subagentId, cause);
       return {
         sessionId: record.sessionId,
         result: truncateForTool(extractFinalText(run.messagesSinceStart())),
       };
     } catch (error) {
+      cause = { state: "failed", reason: errorMessage(error) };
+      this.coordinator.ownLoopEnded(subagentId, cause);
       throw new Error(`Session ${record.sessionId}: ${errorMessage(error)}`, { cause: error });
     } finally {
-      if (abort) environment.signal?.removeEventListener("abort", abort);
+      environment.signal?.removeEventListener("abort", abortFromSignal);
       try {
         await run?.dispose();
       } finally {
-        this.active.delete(subagentId);
-        this.locks.delete(record.sessionId);
-        binding.resolveSettled();
+        await this.coordinator.finish(subagentId, cause);
       }
     }
   }
 
   listSubagents(): readonly Record<string, unknown>[] {
-    const now = Date.now();
-    return [...this.active.values()].map((binding) => ({
+    return this.coordinator.directChildren(this.parentId).map((binding) => ({
       subagentId: binding.subagentId,
       agent: binding.agent,
       session: binding.sessionId,
       task: compactPreview(binding.task),
-      state: "running",
-      elapsedMs: now - binding.startedAt,
+      state: binding.state,
+      elapsedMs: binding.elapsedMs,
     }));
   }
 
@@ -176,7 +177,7 @@ export class BlockingSubagentService {
       const inspection = await this.options.store.inspect(record);
       return {
         session: record.sessionId,
-        locked: this.locks.has(record.sessionId),
+        locked: this.coordinator.isSessionLocked(record.sessionId),
         task: inspection.task,
         result: inspection.result,
         file: record.file,
@@ -184,15 +185,35 @@ export class BlockingSubagentService {
     }));
   }
 
+  waitForDescendants(): Promise<void> {
+    return this.coordinator.waitForDescendants(this.parentId);
+  }
+
   async shutdown(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    const bindings = [...this.active.values()];
-    for (const binding of bindings) {
-      binding.abortRequested = true;
-      binding.run?.abort();
+    if (this.parentId) {
+      for (const child of this.coordinator.directChildren(this.parentId)) {
+        this.coordinator.requestCancel(child.subagentId, "runtime shutting down");
+      }
+      await this.coordinator.waitForDescendants(this.parentId);
+    } else {
+      await this.coordinator.cancelAll("runtime shutting down");
     }
-    await Promise.all(bindings.map((binding) => binding.settled));
+  }
+
+  private createNestedService(record: SessionRecord, parentId: string, definition: AgentDefinition): BlockingSubagentService {
+    const native = record.native as NativeOwnershipSession | undefined;
+    return new BlockingSubagentService({
+      ...this.options,
+      coordinator: this.coordinator,
+      parentId,
+      allowedDefinitions: definition.subagentAgents,
+      persistOwnership: async (sessionId) => {
+        native?.appendCustomEntry(OWNERSHIP_ENTRY, { sessionId });
+      },
+      visibleSessionIds: () => native ? ownedSessionIds(native.getBranch()) : [],
+    });
   }
 }
 

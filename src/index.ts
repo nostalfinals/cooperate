@@ -74,6 +74,10 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       };
     });
 
+    pi.on("agent_end", async () => {
+      await state?.service.waitForDescendants();
+    });
+
     pi.on("session_shutdown", async () => {
       const current = state;
       state = undefined;
