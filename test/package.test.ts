@@ -39,7 +39,7 @@ describe("Pi package metadata", () => {
     const extension = createCooperateExtension({ agentDir: resolve("test/fixtures/missing-agent-dir") });
 
     extension(pi as never);
-    expect([...handlers.keys()]).toEqual(["session_start", "session_shutdown"]);
+    expect([...handlers.keys()]).toEqual(["session_start", "before_agent_start", "session_shutdown"]);
 
     const context = {
       cwd: "/project",
@@ -55,7 +55,7 @@ describe("Pi package metadata", () => {
     expect(tool.name).toBe("subagent");
     expect(tool.parameters.type).toBe("object");
     expect(tool.parameters.anyOf.map((shape) => shape.properties.action.const)).toEqual([
-      "run", "list-subagents", "list-sessions", "wait", "cancel",
+      "run", "list-definitions", "list-subagents", "list-sessions", "wait", "cancel",
     ]);
     await handlers.get("session_shutdown")?.({}, context);
     await handlers.get("session_shutdown")?.({}, context);

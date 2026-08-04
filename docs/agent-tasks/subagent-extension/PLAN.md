@@ -16,7 +16,7 @@
 
 - [x] Slice 1 — Load a strict Definition catalog
 - [x] Slice 2 — Run and resume a blocking direct subagent
-- [ ] Slice 3 — Move Definition discovery into the prompt and tool action
+- [x] Slice 3 — Move Definition discovery into the prompt and tool action
 - [ ] Slice 4 — Coordinate a nested structured runtime tree
 - [ ] Slice 5 — Run asynchronously and manage direct children
 - [ ] Slice 6 — Preserve Session semantics across Pi lifecycle changes
@@ -24,9 +24,7 @@
 
 ## Current codebase state
 
-Slices 1 and 2 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, a blocking direct-child runtime, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/index.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking runs, prompts, and Sessions.
-
-The current completed implementation still places the caller catalog in the `subagent` tool description and appends only the active Definition body through the child resource loader. Slice 3 supersedes that presentation: it removes catalog data from the description, adds `list-definitions`, and injects the caller catalog at the top of the append-system slot for both the main agent and children.
+Slices 1 through 3 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, a blocking direct-child runtime, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, caller-scoped Definition discovery in Pi's append-system slot, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/index.ts`, `src/prompt.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking runs, prompts, Definition discovery, and Sessions.
 
 The implementation targets the locally installed Pi 0.83.0 APIs. Pi provides the remaining primitives: structured system-prompt options in `before_agent_start`, `DefaultResourceLoader` overrides, independent SDK AgentSessions, native JSONL `SessionManager`, custom entries and messages, awaited extension lifecycle handlers, abort signals, dynamic tool renderers, and overlay TUI components.
 
@@ -144,11 +142,18 @@ The main agent can run one direct child synchronously, receive only its terminal
 
 ### Slice 3 — Move Definition discovery into the prompt and tool action
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 Every main or child caller sees its own available Definitions at the top of the append-system section and can request the identical plain-text list explicitly, while the `subagent` tool description no longer carries catalog data.
+
+**Completed work**
+
+- Added the exact shared Definition-discovery formatter, caller-scoped `list-definitions` action, stable generic tool description, and retained caller-constrained `run.agent` schema.
+- Added idempotent main prompt lifecycle injection at Pi's native append boundary and child resource ordering as discovery, existing append prompts, then active Definition body; child `subagent` tools receive a caller-scoped discovery override pending nested coordination.
+- Validation: `npm test -- test/definition-discovery.test.ts test/prompt-resolution.test.ts test/package.test.ts` (11 tests passed); `npm run typecheck` (passed); full `npm test` (47 tests passed); `npm pack --dry-run` (passed, 7 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
+- Deviations: None.
 
 **Scope**
 

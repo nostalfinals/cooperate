@@ -5,7 +5,7 @@ import type {
   ExtensionContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDefinition, CallerCatalog, DefinitionCatalog } from "./catalog.ts";
+import { createCallerCatalog, type AgentDefinition, type CallerCatalog, type DefinitionCatalog } from "./catalog.ts";
 import type { ChildRun, ChildRuntimeFactory } from "./runtime.ts";
 import type { SessionRecord, SessionStore } from "./sessions.ts";
 import { compactPreview, truncateForTool } from "./sessions.ts";
@@ -128,6 +128,7 @@ export class BlockingSubagentService {
         cwd: environment.cwd,
         agentDir: this.options.agentDir,
         definition,
+        callerCatalog: createCallerCatalog(this.options.catalog, definition.subagentAgents),
         record,
         creatorModel: environment.creatorModel,
         task: request.task,
@@ -203,6 +204,7 @@ const actionSchema = (agentSchema: TSchema) => Type.Union([
     sessionId: Type.Optional(Type.String()),
     async: Type.Optional(Type.Boolean()),
   }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("list-definitions") }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("list-subagents") }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("list-sessions") }, { additionalProperties: false }),
   Type.Object({
@@ -224,14 +226,20 @@ function textResult(value: string): AgentToolResult<undefined> {
   return { content: [{ type: "text", text: truncateForTool(value) }], details: undefined };
 }
 
+interface SubagentToolService {
+  run(request: RunRequest, environment: RunEnvironment): Promise<{ sessionId: string; result: string }>;
+  listSubagents(): readonly Record<string, unknown>[];
+  listSessions(): Promise<readonly Record<string, unknown>[]>;
+}
+
 export function createSubagentTool(
-  service: BlockingSubagentService,
+  service: SubagentToolService,
   caller: CallerCatalog,
 ): ToolDefinition {
   return {
     name: "subagent",
     label: "subagent",
-    description: `Run and manage direct configured subagents.\n\n${caller.description}`,
+    description: "Run and manage configured subagents and their Sessions.",
     parameters: actionSchema(caller.agentSchema),
     async execute(_toolCallId, params, signal, _onUpdate, ctx: ExtensionContext) {
       const action = (params as { action: string }).action;
@@ -240,9 +248,21 @@ export function createSubagentTool(
         const result = await service.run(request, { cwd: ctx.cwd, creatorModel: ctx.model, signal });
         return textResult(result.result);
       }
+      if (action === "list-definitions") return textResult(caller.discovery);
       if (action === "list-subagents") return textResult(JSON.stringify(service.listSubagents(), null, 2));
       if (action === "list-sessions") return textResult(JSON.stringify(await service.listSessions(), null, 2));
       throw new Error(`subagent action '${action}' is not implemented until the asynchronous coordination slice`);
     },
   };
+}
+
+export function createSubagentDiscoveryTool(caller: CallerCatalog): ToolDefinition {
+  const unavailable = (): never => {
+    throw new Error("nested subagent coordination is not implemented in this slice");
+  };
+  return createSubagentTool({
+    run: async () => unavailable(),
+    listSubagents: unavailable,
+    listSessions: async () => unavailable(),
+  }, caller);
 }

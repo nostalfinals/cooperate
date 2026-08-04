@@ -1,6 +1,13 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition } from "../src/catalog.ts";
+import type { AgentDefinition, CallerCatalog } from "../src/catalog.ts";
 import { PiChildRuntimeFactory, resolveInvocationSettings } from "../src/runtime.ts";
+
+const emptyCaller: CallerCatalog = {
+  definitions: [],
+  discovery: "No subagent is defined yet",
+  agentSchema: StringEnum([]),
+};
 
 const baseDefinition: AgentDefinition = {
   name: "worker",
@@ -57,12 +64,15 @@ describe("Pi child runtime adapter", () => {
       cwd: "/project",
       agentDir: "/agent",
       definition: baseDefinition,
+      callerCatalog: emptyCaller,
       record: { sessionId: "id", file: "/sessions/id.jsonl", native: {} },
       creatorModel: { id: "creator" },
       task: "isolated task",
     });
 
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual(["global", "project", "Definition body"]);
+    expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual([
+      "No subagent is defined yet", "global", "project", "Definition body",
+    ]);
     expect(sessionOptions).toMatchObject({ model: { id: "creator" }, thinkingLevel: "low", tools: ["read", "custom"] });
     expect(session.bindExtensions).toHaveBeenCalledOnce();
     await run.prompt("isolated task");
@@ -73,6 +83,37 @@ describe("Pi child runtime adapter", () => {
       messages.push({ role: "assistant", content: [], stopReason: "error", errorMessage: "model failed" });
     });
     await expect(run.prompt("fails")).rejects.toThrow("model failed");
+  });
+
+  it("overrides a child's subagent tool with its caller-scoped discovery action", async () => {
+    let customTools: Array<{ execute: (...args: any[]) => Promise<{ content: unknown[] }> }> | undefined;
+    const session = {
+      messages: [],
+      getAllTools: () => [{ name: "subagent" }],
+      getActiveToolNames: () => ["subagent"],
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createSession: async (input) => {
+        customTools = input.customTools as typeof customTools;
+        return { session, dispose: async () => session.dispose() };
+      },
+    });
+
+    await factory.start({
+      cwd: "/project",
+      definition: { ...baseDefinition, tools: ["subagent"] },
+      callerCatalog: emptyCaller,
+      record: { sessionId: "id", file: "/id", native: {} },
+      creatorModel: {},
+      task: "task",
+    });
+
+    expect(customTools).toHaveLength(1);
+    const result = await customTools?.[0]?.execute("call", { action: "list-definitions" }, undefined, undefined, { cwd: "/project" });
+    expect(result?.content).toEqual([{ type: "text", text: "No subagent is defined yet" }]);
   });
 
   it("fails before prompting if any configured tool is unavailable or exact activation is weakened", async () => {
@@ -88,7 +129,7 @@ describe("Pi child runtime adapter", () => {
       createSession: async () => ({ session, dispose: async () => session.dispose() }),
     });
 
-    await expect(factory.start({ cwd: "/project", agentDir: "/agent", definition: baseDefinition, record: { sessionId: "id", file: "/id", native: {} }, creatorModel: {}, task: "task" })).rejects.toThrow("unavailable configured tool 'custom'");
+    await expect(factory.start({ cwd: "/project", agentDir: "/agent", definition: baseDefinition, callerCatalog: emptyCaller, record: { sessionId: "id", file: "/id", native: {} }, creatorModel: {}, task: "task" })).rejects.toThrow("unavailable configured tool 'custom'");
     expect(session.dispose).toHaveBeenCalledOnce();
   });
 });

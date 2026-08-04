@@ -69,7 +69,7 @@ export interface CallerDefinition {
 
 export interface CallerCatalog {
   definitions: readonly CallerDefinition[];
-  description: string;
+  discovery: string;
   agentSchema: TSchema;
 }
 
@@ -320,6 +320,11 @@ export async function loadCatalog(options: CatalogLoadOptions): Promise<Definiti
   return { config, definitions, configPath, definitionsPath };
 }
 
+export function formatDefinitionDiscovery(definitions: readonly CallerDefinition[]): string {
+  if (definitions.length === 0) return "No subagent is defined yet";
+  return `Available subagent definitions:\n\n${definitions.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`;
+}
+
 export function createCallerCatalog(
   catalog: DefinitionCatalog,
   allowedNames?: readonly string[],
@@ -334,13 +339,10 @@ export function createCallerCatalog(
       });
   const definitions = selected.map(({ name, description }) => ({ name, description }));
   const names = definitions.map((definition) => definition.name);
-  const description = definitions.length === 0
-    ? "No subagent Definitions are available to this caller."
-    : `Available subagent Definitions:\n${definitions.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`;
 
   return {
     definitions,
-    description,
+    discovery: formatDefinitionDiscovery(definitions),
     agentSchema: StringEnum(names, { description: "Definition name available to this caller" }),
   };
 }

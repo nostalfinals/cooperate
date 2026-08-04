@@ -4,6 +4,7 @@ import {
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, loadCatalog, type DefinitionCatalog } from "./catalog.ts";
+import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory, type ChildRuntimeFactory } from "./runtime.ts";
 import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
 import { BlockingSubagentService, createSubagentTool } from "./subagent.ts";
@@ -63,6 +64,14 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       });
       state = new SessionCatalogState(catalog, service);
       pi.registerTool(createSubagentTool(service, createCallerCatalog(catalog)));
+    });
+
+    pi.on("before_agent_start", (event) => {
+      if (!state) return undefined;
+      const discovery = createCallerCatalog(state.catalog).discovery;
+      return {
+        systemPrompt: injectDefinitionDiscovery(event.systemPrompt, event.systemPromptOptions, discovery),
+      };
     });
 
     pi.on("session_shutdown", async () => {

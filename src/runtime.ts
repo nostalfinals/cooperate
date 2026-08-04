@@ -6,14 +6,17 @@ import {
   createAgentSessionServices,
   type AgentSessionServices,
   type SessionManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDefinition } from "./catalog.ts";
+import type { AgentDefinition, CallerCatalog } from "./catalog.ts";
 import type { SessionRecord } from "./sessions.ts";
+import { createSubagentDiscoveryTool } from "./subagent.ts";
 
 export interface ChildInvocation {
   cwd: string;
   agentDir?: string;
   definition: AgentDefinition;
+  callerCatalog: CallerCatalog;
   record: SessionRecord;
   creatorModel: unknown;
   task: string;
@@ -65,6 +68,7 @@ interface RuntimeSdk {
     model: unknown;
     thinkingLevel: ThinkingLevel;
     tools: string[];
+    customTools?: ToolDefinition[];
   }): Promise<{ session: SessionLike; dispose(): Promise<void> }>;
 }
 
@@ -78,6 +82,7 @@ const defaultSdk: RuntimeSdk = {
       model: options.model as Model<any>,
       thinkingLevel: options.thinkingLevel,
       tools: options.tools,
+      customTools: options.customTools,
     });
     const runtime = new AgentSessionRuntime(
       result.session,
@@ -150,7 +155,11 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       cwd: invocation.cwd,
       agentDir: invocation.agentDir,
       resourceLoaderOptions: {
-        appendSystemPromptOverride: (base) => [...base, invocation.definition.body],
+        appendSystemPromptOverride: (base) => [
+          invocation.callerCatalog.discovery,
+          ...base,
+          invocation.definition.body,
+        ],
       },
     });
     const resolved = resolveInvocationSettings(
@@ -167,6 +176,9 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       model: resolved.model,
       thinkingLevel: resolved.thinking,
       tools: [...invocation.definition.tools],
+      customTools: invocation.definition.tools.includes("subagent")
+        ? [createSubagentDiscoveryTool(invocation.callerCatalog)]
+        : undefined,
     });
     const { session } = created;
 

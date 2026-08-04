@@ -169,7 +169,7 @@ describe("createCallerCatalog", () => {
       { name: "beta", description: "Beta tasks" },
     ]);
     expect(caller.agentSchema).toMatchObject({ type: "string", enum: ["beta"] });
-    expect(caller.description).toContain("beta: Beta tasks");
-    expect(caller.description).not.toContain("alpha");
+    expect(caller.discovery).toBe("Available subagent definitions:\n\n- beta: Beta tasks");
+    expect(caller.discovery).not.toContain("alpha");
   });
 });
