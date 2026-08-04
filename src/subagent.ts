@@ -213,7 +213,12 @@ const actionSchema = (agentSchema: TSchema) => Type.Union([
     action: Type.Literal("cancel"),
     subagentId: Type.String({ pattern: "^[0-9a-f]{8}$" }),
   }, { additionalProperties: false }),
-]);
+], {
+  // Some OpenAI-compatible providers (including DeepSeek V4 Flash)
+  // require function parameter schemas to declare a top-level object type.
+  // Keep the discriminated anyOf while making that object contract explicit.
+  type: "object",
+});
 
 function textResult(value: string): AgentToolResult<undefined> {
   return { content: [{ type: "text", text: truncateForTool(value) }], details: undefined };
