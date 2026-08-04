@@ -14,7 +14,7 @@
 
 ## Progress
 
-- [ ] Slice 1 — Load a strict Definition catalog
+- [x] Slice 1 — Load a strict Definition catalog
 - [ ] Slice 2 — Run and resume a blocking direct subagent
 - [ ] Slice 3 — Coordinate a nested structured runtime tree
 - [ ] Slice 4 — Run asynchronously and manage direct children
@@ -63,11 +63,19 @@ flowchart LR
 
 ### Slice 1 — Load a strict Definition catalog
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 `cooperate` is a loadable local Pi package with a deterministic configuration and Definition catalog. Valid Definitions become the caller-facing dynamic catalog; invalid input fails atomically with actionable source diagnostics.
+
+**Completed work**
+
+- Added the private ESM Pi package scaffold, Pi 0.83.0 peer/development metadata, TypeScript and Vitest configuration, and package lockfile.
+- Added strict configuration and direct Definition discovery with atomic validation of frontmatter, names, lists, tools, child references, models, thinking levels, and preserved Markdown bodies.
+- Added caller-scoped Definition projections and agent schemas plus session-scoped extension initialization and idempotent shutdown state.
+- Validation: `npm test -- test/catalog.test.ts test/package.test.ts` (29 tests passed); `npm run typecheck` (passed); `npm pack --dry-run` (passed, 3 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
+- Deviations: None.
 
 **Scope**
 

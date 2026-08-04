@@ -1,0 +1,47 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { createCooperateExtension } from "../src/index.ts";
+
+interface PackageManifest {
+  private?: boolean;
+  type?: string;
+  pi?: { extensions?: string[] };
+  peerDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
+}
+
+describe("Pi package metadata", () => {
+  it("declares the TypeScript extension and unbundled Pi peers", async () => {
+    const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8")) as PackageManifest;
+
+    expect(manifest.private).toBe(true);
+    expect(manifest.type).toBe("module");
+    expect(manifest.pi?.extensions).toEqual(["./src/index.ts"]);
+    expect(manifest.scripts).toMatchObject({ test: "vitest run", typecheck: "tsc --noEmit" });
+    expect(manifest.peerDependencies).toEqual({
+      "@earendil-works/pi-agent-core": "*",
+      "@earendil-works/pi-ai": "*",
+      "@earendil-works/pi-coding-agent": "*",
+      "@earendil-works/pi-tui": "*",
+      typebox: "*",
+    });
+  });
+
+  it("initializes catalog state per session and shuts down idempotently", async () => {
+    const handlers = new Map<string, (...args: any[]) => unknown>();
+    const pi = {
+      on: vi.fn((event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler)),
+      getAllTools: vi.fn(() => [{ name: "read" }]),
+    };
+    const extension = createCooperateExtension({ agentDir: resolve("test/fixtures/missing-agent-dir") });
+
+    extension(pi as never);
+    expect([...handlers.keys()]).toEqual(["session_start", "session_shutdown"]);
+
+    const context = { modelRegistry: { find: vi.fn() } };
+    await handlers.get("session_start")?.({}, context);
+    await handlers.get("session_shutdown")?.({}, context);
+    await handlers.get("session_shutdown")?.({}, context);
+  });
+});
