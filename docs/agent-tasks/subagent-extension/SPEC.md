@@ -59,7 +59,7 @@ Agent Definitions are direct, non-recursive `.md` files in `~/.pi/agent/cooperat
 
 Whitespace is trimmed from comma-separated entries. Empty or duplicate entries, duplicate Definition names, unknown frontmatter fields, unresolved Definition references, unavailable tools, malformed model references, or models absent from Pi's registry invalidate the entire catalog. Tools are validated again when a child runtime is created. No configured tool is silently omitted and no tool is implicitly added.
 
-A nonempty `subagent_agents` requires `subagent` in `tools`. A Definition may include `subagent` with an empty child allowlist; it can then list, wait for, or cancel direct children but cannot run a new child. The main agent may use every current Definition. A child may run only the Definitions listed by its own Definition. The `subagent` tool description and schema expose only the Definitions available to that caller, including their descriptions.
+A nonempty `subagent_agents` requires `subagent` in `tools`. A Definition may include `subagent` with an empty child allowlist; it can then call `list-definitions` and list, wait for, or cancel direct children, but cannot run a new child. The main agent may use every current Definition. A child may run only the Definitions listed by its own Definition. The `run.agent` schema remains constrained to the Definition names available to that caller, but the `subagent` tool description is stable and generic: it must not enumerate Definition names or descriptions.
 
 Configuration and the catalog reload only with the extension. An invalid catalog prevents a partially valid catalog from becoming active. Existing child Session files survive Definition changes or deletion, but every new invocation requires a currently valid Definition.
 
@@ -69,7 +69,17 @@ Each live Subagent is an in-process, independent, headless Pi `AgentSessionRunti
 
 The child's final active tool set is exactly the Definition's `tools` allowlist. Tool registration failures or unavailable configured tools fail the invocation rather than weakening the allowlist.
 
-The Definition Markdown body is added through Pi's append-system-prompt resource slot. Existing append-system prompts are retained in their existing order and the Definition body is appended after them. Consequently, the Definition body appears where Pi normally places append-system content, before project context, skills, and current-working-directory sections; it is not appended to the fully assembled prompt.
+Every caller's system prompt includes a Definition-discovery block at the very top of Pi's append-system-prompt slot. It lists only Definitions that caller may run, in caller-catalog order, using exactly:
+
+```text
+Available subagent definitions:
+
+- <name>: <description>
+```
+
+with one bullet per available Definition. With none, the complete block is exactly `No subagent is defined yet`.
+
+Existing append-system prompts are retained after this discovery block and in their existing order. In a child runtime, the active Definition Markdown body is appended after those existing append-system prompts. Thus the child append-system order is discovery block, existing append prompts, then Definition body. All of this content remains in Pi's native append-system slot before project context, skills, and current-working-directory sections; none is appended to the fully assembled prompt.
 
 A newly created Session receives only the explicit `task` as its user message. It does not receive the creator's conversation, system prompt, or tool history. A resumed Session retains only its own existing history plus the new task.
 
@@ -126,6 +136,7 @@ The extension registers one dynamic tool named `subagent` with exactly these act
 
 ```ts
 { action: "run", agent: string, task: string, sessionId?: string, async?: boolean }
+{ action: "list-definitions" }
 { action: "list-subagents" }
 { action: "list-sessions" }
 { action: "wait", subagentIds: string[] }
@@ -144,6 +155,16 @@ For `run`:
 A blocking run keeps the tool call pending until the target's complete subtree terminates. On success it returns the extracted final result in the tool result and never sends a custom completion message. On failure it returns an error tool result containing the Session ID and reason; the failed Session remains resumable.
 
 An asynchronous run returns its new `subagentId` and Session ID once startup succeeds. Its terminal success, failure, or explicit cancellation is subsequently delivered exactly once as a custom completion message, never as a delayed tool result.
+
+`list-definitions` returns plain text produced by the same formatter and caller-scoped catalog used for the system-prompt discovery block. With available Definitions its complete result is:
+
+```text
+Available subagent definitions:
+
+- <name>: <description>
+```
+
+with one bullet per Definition in caller-catalog order. With none, its complete result is exactly `No subagent is defined yet`.
 
 `list-subagents` returns only the caller's direct active bindings, with enough identity, Definition, Session, task, state, and elapsed information to use `wait` or `cancel`. It does not return finished bindings.
 
@@ -192,6 +213,7 @@ Tool-call headers are exactly:
 
 - `subagent run <agent>`
 - `subagent run <agent> (async)`
+- `subagent list-definitions`
 - `subagent list-subagents`
 - `subagent list-sessions`
 - `subagent wait <id>, <id>`
@@ -218,7 +240,8 @@ The detail footer is `c cancel subtree   esc back`. Pressing `c` asks `Cancel <a
 - Use in-process Pi runtimes rather than subprocesses so Sessions, cancellation, runtime events, and structured scopes can be coordinated directly.
 - Use native Pi JSONL and custom entries rather than a parallel transcript or ownership database.
 - Treat Session identity as master-namespaced so master fork/clone can copy files without rewriting UUIDs or immutable history.
-- Keep a single action-discriminated tool rather than separate spawn, list, wait, and cancel tools.
+- Keep a single action-discriminated tool rather than separate run, Definition-discovery, child-listing, Session-listing, wait, and cancel tools.
+- Present the caller's Definition catalog through one shared plain-text formatter in the append-system slot and `list-definitions`, never through the tool description.
 - Hold Pi's real `agent_end` lifecycle rather than spoofing a Working indicator.
 - Keep runtime IDs transient and terminal delivery message-based; do not build a result cache.
 - Load normal Pi resources in every child, then enforce the Definition allowlist as the exact active tool set.
@@ -235,14 +258,15 @@ The detail footer is `c cancel subtree   esc back`. Pressing `c` asks `Cancel <a
 ## Acceptance criteria
 
 - Missing valid configuration produces the documented defaults, while every specified invalid configuration or Definition condition rejects the whole catalog with a path and reason.
-- The dynamic tool exposes only caller-allowed Definition names and descriptions, and a child runtime receives exactly its configured tool names.
-- A child loads normal Pi resources, preserves existing append-system prompts, inserts its Definition in the native append slot, receives only its explicit task, and resolves model and thinking according to the required precedence.
+- The dynamic `run.agent` schema accepts only caller-allowed Definition names, the generic tool description contains no Definition catalog, and a child runtime receives exactly its configured tool names.
+- The main agent and every child receive the exact caller-scoped Definition-discovery text at the top of the native append-system slot; `list-definitions` returns the same text, including the exact empty-catalog response.
+- A child loads normal Pi resources, preserves existing append-system prompts after discovery, inserts its Definition after those prompts in the native append slot, receives only its explicit task, and resolves model and thinking according to the required precedence.
 - A blocking direct child can create and persist a native Session, return only the final text block, and later resume the same Session under any currently permitted Definition.
 - Direct ownership and Session discovery follow the active Pi branch and survive compaction and master resume.
 - Nested runs enforce depth and Definition permissions; a child failure cancels only its descendants while siblings continue.
 - Main interruption and every specified Session lifecycle transition stop and dispose the complete tree without completion-message noise.
 - Async runs return promptly, deliver exactly one terminal message, continue an idle waiting parent, and keep native Working active until all descendants settle.
-- `list-subagents`, `list-sessions`, `wait`, and `cancel` enforce direct-child visibility and their specified validation, waiting, and result semantics.
+- `list-definitions`, `list-subagents`, `list-sessions`, `wait`, and `cancel` enforce their specified caller visibility, validation, formatting, waiting, and result semantics.
 - Master `/fork` and `/clone` create independent byte-equivalent child Session copies under the new namespace without ID rewriting; failure cannot leave an active partial destination.
 - Enabled orphan GC selects only missing master Sessions and uses the specified trash/fallback behavior.
 - Tool renderers, completion renderers, and `/subagents` match the specified compact/expanded information and interaction behavior at narrow and wide terminal widths.

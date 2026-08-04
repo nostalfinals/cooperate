@@ -16,47 +16,34 @@
 
 - [x] Slice 1 — Load a strict Definition catalog
 - [x] Slice 2 — Run and resume a blocking direct subagent
-- [ ] Slice 3 — Coordinate a nested structured runtime tree
-- [ ] Slice 4 — Run asynchronously and manage direct children
-- [ ] Slice 5 — Preserve Session semantics across Pi lifecycle changes
-- [ ] Slice 6 — Deliver the complete TUI presentation
+- [ ] Slice 3 — Move Definition discovery into the prompt and tool action
+- [ ] Slice 4 — Coordinate a nested structured runtime tree
+- [ ] Slice 5 — Run asynchronously and manage direct children
+- [ ] Slice 6 — Preserve Session semantics across Pi lifecycle changes
+- [ ] Slice 7 — Deliver the complete TUI presentation
 
 ## Current codebase state
 
-The repository is empty except for these planning artifacts. It is not currently a Git repository and has no package manifest, source, tests, or repository-local instructions. The extension name comes from the repository directory: `cooperate`.
+Slices 1 and 2 are implemented on `main`. The repository is now an ESM TypeScript Pi package with strict catalog loading, a blocking direct-child runtime, native Session persistence/reuse, branch-aware ownership, exact tool activation, prompt/model resolution, and deterministic Vitest coverage. The current source is organized around `src/catalog.ts`, `src/index.ts`, `src/runtime.ts`, `src/sessions.ts`, and `src/subagent.ts`; the matching tests cover catalog/package behavior, blocking runs, prompts, and Sessions.
 
-The implementation targets the locally installed Pi 0.83.0 APIs. Pi already provides the essential primitives: ESM TypeScript extension loading, `DefaultResourceLoader` overrides, independent SDK AgentSessions, native JSONL `SessionManager`, custom entries and messages, awaited extension lifecycle handlers, abort signals, dynamic tool renderers, and overlay TUI components.
+The current completed implementation still places the caller catalog in the `subagent` tool description and appends only the active Definition body through the child resource loader. Slice 3 supersedes that presentation: it removes catalog data from the description, adds `list-definitions`, and injects the caller catalog at the top of the append-system slot for both the main agent and children.
 
-The implementation should retain explicit seams between pure domain coordination and Pi/filesystem adapters so tests can exercise all required behavior without provider calls, credentials, sleeps, or a real terminal. Keep modules cohesive rather than introducing a framework or generic orchestration layer. A suitable starting layout is:
+The implementation targets the locally installed Pi 0.83.0 APIs. Pi provides the remaining primitives: structured system-prompt options in `before_agent_start`, `DefaultResourceLoader` overrides, independent SDK AgentSessions, native JSONL `SessionManager`, custom entries and messages, awaited extension lifecycle handlers, abort signals, dynamic tool renderers, and overlay TUI components.
 
-```text
-package.json
-src/
-  index.ts
-  catalog.ts
-  coordinator.ts
-  runtime.ts
-  sessions.ts
-  tool.ts
-  ui.ts
-test/
-  fixtures/
-  support/
-```
-
-This layout is guidance, not a requirement to preserve empty modules or prevent merging modules when the implementation remains clearer.
+Continue retaining explicit seams between pure domain coordination and Pi/filesystem adapters so tests can exercise required behavior without provider calls, credentials, sleeps, or a real terminal. Add coordinator or UI modules only when their slices need them; do not reorganize completed modules merely to match the original suggested layout.
 
 ## Execution roadmap
 
 ```mermaid
 flowchart LR
     S1["1. Catalog"] --> S2["2. Blocking run and reuse"]
-    S2 --> S3["3. Nested structured tree"]
-    S3 --> S4["4. Async coordination"]
-    S4 --> S5["5. Persistence lifecycle"]
-    S4 --> S6["6. TUI"]
-    S5 --> V["Final verification"]
-    S6 --> V
+    S2 --> S3["3. Definition discovery"]
+    S3 --> S4["4. Nested structured tree"]
+    S4 --> S5["5. Async coordination"]
+    S5 --> S6["6. Persistence lifecycle"]
+    S5 --> S7["7. TUI"]
+    S6 --> V["Final verification"]
+    S7 --> V
 ```
 
 ## Slices
@@ -85,7 +72,7 @@ flowchart LR
 - Resolve `~/.pi/agent/cooperate/config.json` and the direct `subagents/*.md` catalog.
 - Parse YAML frontmatter and Markdown bodies, apply defaults, and enforce every catalog constraint in the specification.
 - Validate model references against Pi's model registry and tool names against the complete registered tool catalog.
-- Derive caller-specific Definition descriptions and constrained `agent` schemas without mutating the global catalog.
+- Derive caller-specific Definition projections and constrained `agent` schemas without mutating the global catalog.
 - Establish test fixtures and fakes for paths, tool metadata, model registry data, extension context, and cleanup.
 
 **Implementation notes**
@@ -125,7 +112,7 @@ The main agent can run one direct child synchronously, receive only its terminal
 
 **Scope**
 
-- Register the complete action-discriminated `subagent` tool contract with caller-specific Definition constraints and descriptions.
+- Register the action-discriminated `subagent` tool contract with caller-specific Definition constraints.
 - Add the child-runtime adapter around Pi's in-process runtime/session APIs and proper runtime bind, start, stop, and disposal behavior.
 - Load normal Pi resources for the child and inject the Definition with `appendSystemPromptOverride(base => [...base, body])`.
 - Resolve model, authentication, and non-inherited thinking at invocation time.
@@ -155,7 +142,43 @@ The main agent can run one direct child synchronously, receive only its terminal
 
 - Slice 1.
 
-### Slice 3 — Coordinate a nested structured runtime tree
+### Slice 3 — Move Definition discovery into the prompt and tool action
+
+**Status:** Pending
+
+**Outcome**
+
+Every main or child caller sees its own available Definitions at the top of the append-system section and can request the identical plain-text list explicitly, while the `subagent` tool description no longer carries catalog data.
+
+**Scope**
+
+- Add one pure formatter for caller-scoped Definition projections. Its nonempty and empty output must exactly match the strings in the specification.
+- Add `{ action: "list-definitions" }` to the discriminated tool schema and dispatch it without requiring runtime or Session state.
+- Replace the catalog-bearing dynamic tool description with a stable generic description that contains no Definition names or descriptions.
+- Keep `run.agent` as the caller-constrained enum so runtime validation is not weakened.
+- Inject the main agent's complete caller catalog at the very top of the native append-system section through Pi's prompt lifecycle.
+- Inject a child's permitted catalog at the front of `appendSystemPromptOverride`, ahead of all existing append-system prompts; keep its active Definition body after those existing prompts.
+- Use the same caller projection and formatter for prompt injection and `list-definitions`, including callers with no available Definitions.
+
+**Implementation notes**
+
+- The main caller receives all loaded Definitions. A child receives only the Definitions in its creator Definition's `subagent_agents`; an empty allowlist uses the exact empty-catalog text.
+- Use `before_agent_start` and its structured system-prompt options for the TUI-connected main runtime, preserving custom/default base prompt content, existing append content, project context, skills, and current-working-directory sections. Do not append discovery to the end of the fully assembled prompt.
+- In controlled child resource loading, the append array order is `[discovery, ...existing, definitionBody]`.
+- Make host prompt injection idempotent and compatible with other extensions modifying the same lifecycle event; one agent start must contain exactly one cooperate discovery block.
+- Do not expose descriptions through the generic tool description. The `run.agent` schema still exposes only allowed names as enum values by design.
+- Preserve caller-catalog order rather than independently sorting prompt and action output.
+
+**Validation**
+
+- `npm test -- test/definition-discovery.test.ts test/prompt-resolution.test.ts test/package.test.ts` — proves exact nonempty/empty text, the new action shape and dispatch, description redaction, caller scoping, main prompt placement, child append order, preservation of existing prompt sections, and no duplicate injection.
+- `npm run typecheck` — proves prompt lifecycle and resource-loader integration use supported Pi 0.83.0 contracts.
+
+**Dependencies**
+
+- Slice 2.
+
+### Slice 4 — Coordinate a nested structured runtime tree
 
 **Status:** Pending
 
@@ -190,9 +213,9 @@ Any permitted child can create its own direct children up to `maxDepth`; active 
 
 **Dependencies**
 
-- Slice 2.
+- Slice 3.
 
-### Slice 4 — Run asynchronously and manage direct children
+### Slice 5 — Run asynchronously and manage direct children
 
 **Status:** Pending
 
@@ -228,9 +251,9 @@ An agent can start direct children asynchronously, continue its own work, list/w
 
 **Dependencies**
 
-- Slice 3.
+- Slice 4.
 
-### Slice 5 — Preserve Session semantics across Pi lifecycle changes
+### Slice 6 — Preserve Session semantics across Pi lifecycle changes
 
 **Status:** Pending
 
@@ -268,9 +291,9 @@ Child ownership and data remain correct through compaction, branch navigation, m
 
 **Dependencies**
 
-- Slice 4.
+- Slice 5.
 
-### Slice 6 — Deliver the complete TUI presentation
+### Slice 7 — Deliver the complete TUI presentation
 
 **Status:** Pending
 
@@ -280,7 +303,7 @@ Blocking runs, async starts, management actions, terminal messages, and the acti
 
 **Scope**
 
-- Add action-specific `renderCall` and `renderResult` implementations with the exact headers, title/accent/muted roles, collapsed summaries, and expanded content.
+- Add action-specific `renderCall` and `renderResult` implementations with the exact headers, including `subagent list-definitions`, title/accent/muted roles, collapsed summaries, and expanded content.
 - Feed blocking `run` subtree snapshots through `onUpdate`, including nested hierarchy, state marks, elapsed time, task previews, and retained terminal state.
 - Register the `[subagent]` custom-message renderer with Pi's standard expanded state and the exact collapsed terminal strings.
 - Implement `/subagents` as a bordered overlay based on the `model-preset` interaction pattern.
@@ -306,7 +329,7 @@ Blocking runs, async starts, management actions, terminal messages, and the acti
 
 **Dependencies**
 
-- Slice 4. It may proceed in parallel with Slice 5 once coordinator and async message contracts are stable.
+- Slice 5. It may proceed in parallel with Slice 6 once coordinator and async message contracts are stable.
 
 ## Final verification
 
