@@ -58,6 +58,63 @@ describe("orphan master session cleanup", () => {
     expect(await present(fallback)).toBe(false);
   });
 
+  it("aborts removals when shouldProceed turns false", async () => {
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    roots.push(agentDir);
+    const root = join(agentDir, "cooperate", "sessions");
+    const first = join(root, "first");
+    const second = join(root, "second");
+    await mkdir(first, { recursive: true });
+    await mkdir(second, { recursive: true });
+    const trash = vi.fn(async (path: string) => {
+      await rm(path, { recursive: true });
+      return true;
+    });
+    let checks = 0;
+    await garbageCollectOrphanSessions(agentDir, new Set(), {
+      trash,
+      shouldProceed: () => ++checks <= 1,
+    });
+    expect(await present(first)).toBe(false);
+    expect(await present(second)).toBe(true);
+  });
+
+  it("completes an in-flight removal but starts no new ones after invalidation", async () => {
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    roots.push(agentDir);
+    const root = join(agentDir, "cooperate", "sessions");
+    const first = join(root, "first");
+    const second = join(root, "second");
+    await mkdir(first, { recursive: true });
+    await mkdir(second, { recursive: true });
+    let proceed = true;
+    let releaseFirst: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let firstStarted = false;
+    const trash = vi.fn(async (path: string) => {
+      if (path === first) {
+        firstStarted = true;
+        // Hold the in-flight removal until the test invalidates the run, like
+        // a session replacement bumping the generation mid-deletion.
+        await firstGate;
+      }
+      await rm(path, { recursive: true });
+      return true;
+    });
+    const run = garbageCollectOrphanSessions(agentDir, new Set(), {
+      trash,
+      shouldProceed: () => proceed,
+    });
+    await vi.waitFor(() => expect(firstStarted).toBe(true));
+    proceed = false;
+    releaseFirst();
+    await run;
+    // The removal already in flight finishes; the later one is aborted, so a
+    // namespace created by a newer session can never be deleted.
+    expect(await present(first)).toBe(false);
+    expect(await present(second)).toBe(true);
+  });
+
   it("does not collect a fork source before the copied destination is established", async () => {
     const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
     roots.push(agentDir);

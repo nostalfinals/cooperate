@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, opendir, readFile, rm } from "node:fs/promises";
+import { access, opendir, open, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -11,6 +11,38 @@ async function exists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Upper bound for a session header line. Real headers are well under 1KB; the
+ * bound only guards against pathological files. Lines beyond it are treated
+ * like corrupt headers (the session id is not collected).
+ */
+const MAX_HEADER_LINE_BYTES = 1024 * 1024;
+
+/** Read just the first line of a JSONL file without loading the whole file. */
+async function readFirstLine(file: string): Promise<string | undefined> {
+  const handle = await open(file, "r");
+  try {
+    const chunks: Buffer[] = [];
+    const buffer = Buffer.alloc(8192);
+    let total = 0;
+    while (total < MAX_HEADER_LINE_BYTES) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      const chunk = buffer.subarray(0, bytesRead);
+      const newline = chunk.indexOf(0x0a);
+      if (newline !== -1) {
+        chunks.push(chunk.subarray(0, newline));
+        return Buffer.concat(chunks).toString("utf8");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    return undefined;
+  } finally {
+    await handle.close();
   }
 }
 
@@ -38,7 +70,8 @@ export async function collectMasterSessionIds(
   const files = (await Promise.all([...roots].map(jsonlFiles))).flat();
   for (const file of files) {
     try {
-      const firstLine = (await readFile(file, "utf8")).split("\n", 1)[0];
+      const firstLine = await readFirstLine(file);
+      if (firstLine === undefined) continue;
       const header = JSON.parse(firstLine) as { type?: string; id?: string };
       if (header.type === "session" && typeof header.id === "string") ids.add(header.id);
     } catch {
@@ -66,6 +99,8 @@ export async function selectOrphanSessionDirectories(
 export interface OrphanCleanupOptions {
   /** Return false only when no trash facility is available. */
   trash?: (path: string) => Promise<boolean>;
+  /** Abort before the next removal when this returns false (checked synchronously per path). */
+  shouldProceed?: () => boolean;
 }
 
 const execFileAsync = promisify(execFile);
@@ -92,8 +127,14 @@ export async function garbageCollectOrphanSessions(
 ): Promise<string[]> {
   const orphans = await selectOrphanSessionDirectories(cooperateSessionsDirectory(agentDir), existingMasterIds);
   const trash = options.trash ?? systemTrash;
+  const handled: string[] = [];
   for (const path of orphans) {
+    // Synchronous check with no await between it and the trash call, so a
+    // stale background run cannot remove a namespace that a newer session
+    // replacement (e.g. a fork copy) just created.
+    if (options.shouldProceed && !options.shouldProceed()) break;
     if (!(await trash(path))) await rm(path, { recursive: true, force: true });
+    handled.push(path);
   }
-  return orphans;
+  return handled;
 }
