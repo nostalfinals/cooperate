@@ -68,14 +68,6 @@ describe("Pi package metadata", () => {
       "run", "list-definitions", "list-subagents", "list-sessions", "wait", "cancel",
     ]);
 
-    const command = pi.registerCommand.mock.calls.find(([name]) => name === "subagents")?.[1] as {
-      handler(args: string, ctx: unknown): Promise<void>;
-    };
-    const custom = vi.fn(async () => undefined);
-    await command.handler("", { mode: "tui", ui: { custom } });
-    expect(custom).toHaveBeenCalledOnce();
-    expect(custom.mock.calls[0]).toHaveLength(1);
-
     await handlers.get("session_shutdown")?.({}, context);
     await handlers.get("session_shutdown")?.({}, context);
   });

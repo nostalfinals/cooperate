@@ -36,7 +36,7 @@ function rowsFor(roots: readonly SubagentSnapshot[]): Row[] {
 }
 
 function key(data: string, name: "left" | "right" | "escape"): boolean {
-  return data === name || matchesKey(data, name);
+  return data === name || (name === "escape" && data === "\u001b") || matchesKey(data, name);
 }
 
 function descendantCount(snapshot: SubagentSnapshot): number {
@@ -77,8 +77,13 @@ export class SubagentsOverlay implements Component {
   handleInput(data: string): void {
     if (this.cancelling) return;
     if (this.mode === "list") {
-      if (!this.list) this.listContainer();
-      this.list?.handleInput(data);
+      if (key(data, "escape")) {
+        this.dispose();
+        this.options.close();
+      } else {
+        if (!this.list) this.listContainer();
+        this.list?.handleInput(data);
+      }
     } else if (this.mode === "detail") {
       if (key(data, "escape")) this.showList();
       else if (data.toLowerCase() === "c" && this.currentDetail()) {
@@ -86,6 +91,8 @@ export class SubagentsOverlay implements Component {
         this.mode = "confirm";
         this.confirmContainer();
       }
+    } else if (key(data, "escape")) {
+      this.mode = "detail";
     } else if (key(data, "left")) {
       this.confirmChoice = "no";
       this.confirmList?.setSelectedIndex(0);

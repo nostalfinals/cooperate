@@ -335,9 +335,9 @@ Blocking runs, async starts, management actions, terminal messages, and the acti
 - Added exact action-specific tool headers and compact/expanded result rendering, live blocking-subtree updates, retained terminal snapshots, semantic state marks, responsive hierarchy rendering, and resolved model/thinking presentation metadata.
 - Added the standard-expanded-state custom completion renderer and a live bordered `/subagents` overlay with active-tree scrolling, list/detail/empty views, accent selection, default-No subtree cancellation confirmation, awaited cancellation, and TUI-only command handling.
 - Post-completion correction: replaced the initial centered, manually drawn overlay with the local `model-presets` interaction and visual structure: non-positioned `ctx.ui.custom`, `Container`, accent `DynamicBorder`, titled `Text`, native `SelectList`, and dim footer; details and cancellation remain in the same shell.
-- Added deterministic renderer and overlay tests covering semantic roles, narrow-width truncation, exact completion strings, navigation, details, cancellation waiting, and empty-state refresh.
-- Validation: `npm test -- test/tool-renderer.test.ts test/message-renderer.test.ts` (8 tests passed); `npm test -- test/subagents-overlay.test.ts` (4 tests passed); `npm run typecheck` (passed); full `npm test` (89 tests passed); `npm pack --dry-run` (passed, 12 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
-- Deviations: None.
+- UI presentation and interaction are reserved for manual inspection; the temporary renderer and overlay test files were removed at user request.
+- Validation: `npm run typecheck` (passed); full `npm test` (77 tests passed); `npm pack --dry-run` (passed, 12 package files); `PI_OFFLINE=1 pi -e . --help` (passed). Escape now closes explicitly from the list, including the empty state, rather than relying on `SelectList` input forwarding.
+- Deviations: Planned automated TUI renderer and overlay tests were removed by explicit user direction; visual and interactive correctness requires manual verification.
 
 **Scope**
 
