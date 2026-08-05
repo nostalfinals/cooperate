@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
-import { BlockingSubagentService, extractFinalText } from "../src/subagent.ts";
-import type { ChildInvocation, ChildRun } from "../src/runtime.ts";
-import type { SessionRecord, SessionStore } from "../src/sessions.ts";
+import { SubagentService } from "../src/subagent/service.ts";
+import { extractFinalText } from "../src/subagent/result.ts";
+import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
 
 const definition = (name = "worker"): AgentDefinition => ({
   name,
@@ -50,10 +50,11 @@ function harness(options: { fail?: Error; output?: unknown[] } = {}) {
       { role: "assistant", content: [{ type: "text", text: "first" }, { type: "thinking", thinking: "x" }, { type: "text", text: " final " }] },
     ],
   };
-  const service = new BlockingSubagentService({
+  const service = new SubagentService({
     catalog,
     store,
     runtimeFactory: { start: vi.fn(async (invocation) => { invocations.push(invocation); return run; }) },
+    toolFactory: () => undefined,
     persistOwnership: vi.fn(async (sessionId) => { ownership.push(sessionId); }),
     visibleSessionIds: () => ownership,
   });
@@ -70,10 +71,11 @@ describe("blocking subagent run", () => {
       h.records.set(record.sessionId, record);
       return record;
     });
-    const service = new BlockingSubagentService({
+    const service = new SubagentService({
       catalog,
       store: h.store,
       runtimeFactory: { start: vi.fn(async (invocation) => { order.push("start"); h.invocations.push(invocation); return h.run; }) },
+      toolFactory: () => undefined,
       persistOwnership: vi.fn(async (id) => { order.push("own"); h.ownership.push(id); }),
       visibleSessionIds: () => h.ownership,
     });

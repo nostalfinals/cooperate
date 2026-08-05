@@ -11,35 +11,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition, CallerCatalog } from "./catalog.ts";
 import { createPiContinuationHost, type ContinuationHost } from "./continuation.ts";
-import type { TerminalCause } from "./coordinator.ts";
-import type { SessionRecord } from "./sessions.ts";
-import { createSubagentDiscoveryTool } from "./subagent.ts";
-
-export interface ChildInvocation {
-  cwd: string;
-  agentDir?: string;
-  definition: AgentDefinition;
-  callerCatalog: CallerCatalog;
-  record: SessionRecord;
-  creatorModel: unknown;
-  task: string;
-  subagentTool?: ToolDefinition;
-  onContinuationHost?(host: ContinuationHost): void;
-  onAgentEnd?(cause: TerminalCause): Promise<void>;
-}
-
-export interface ChildRun {
-  readonly model?: string;
-  readonly thinking?: ThinkingLevel;
-  prompt(task: string): Promise<void>;
-  abort(): void;
-  dispose(): Promise<void>;
-  messagesSinceStart(): readonly unknown[];
-}
-
-export interface ChildRuntimeFactory {
-  start(invocation: ChildInvocation): Promise<ChildRun>;
-}
+import type { ChildInvocation, ChildRun, ChildRuntimeFactory, SessionRecord } from "./subagent/ports.ts";
+import type { TerminalCause } from "./subagent/types.ts";
+import { createSubagentDiscoveryTool } from "./tool/subagent-tool.ts";
 
 interface ModelRuntimeLike {
   getModel(provider: string, modelId: string): unknown;
@@ -210,7 +184,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       thinkingLevel: resolved.thinking,
       tools: [...invocation.definition.tools],
       customTools: invocation.definition.tools.includes("subagent")
-        ? [invocation.subagentTool ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
+        ? [(invocation.subagentTool as ToolDefinition | undefined) ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
         : undefined,
     });
     const { session } = created;

@@ -1,43 +1,22 @@
-import { Type, type TSchema } from "typebox";
+import { createCallerCatalog, type AgentDefinition, type DefinitionCatalog } from "../catalog.ts";
+import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
+import { compactPreview, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "../sessions.ts";
 import type {
-  AgentToolResult,
-  ExtensionContext,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
-import { createCallerCatalog, type AgentDefinition, type CallerCatalog, type DefinitionCatalog } from "./catalog.ts";
-import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "./continuation.ts";
-import { StructuredCoordinator, type SubagentSnapshot, type TerminalCause } from "./coordinator.ts";
-import type { ChildRun, ChildRuntimeFactory } from "./runtime.ts";
-import type { SessionRecord, SessionStore } from "./sessions.ts";
-import { renderSubagentTree } from "./presentation.ts";
-import { compactPreview, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "./sessions.ts";
+  ChildRun,
+  ChildRuntimeFactory,
+  SessionRecord,
+  SessionStore,
+  SubagentToolFactory,
+} from "./ports.ts";
+import { StructuredCoordinator } from "./coordinator.ts";
+import { extractFinalText } from "./result.ts";
+import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot, TerminalCause } from "./types.ts";
 
-export interface RunRequest {
-  agent: string;
-  task: string;
-  sessionId?: string;
-  async?: boolean;
-}
-
-export interface RunEnvironment {
-  cwd: string;
-  creatorModel: unknown;
-  signal?: AbortSignal;
-  toolCallId?: string;
-  onSnapshot?(snapshot: SubagentSnapshot): void;
-}
-
-export interface RunResponse {
-  sessionId: string;
-  result: string;
-  subagentId?: string;
-}
-
-export interface BlockingSubagentOptions {
+export interface SubagentServiceOptions {
   catalog: DefinitionCatalog;
   store: SessionStore;
   runtimeFactory: ChildRuntimeFactory;
+  toolFactory: SubagentToolFactory;
   persistOwnership(sessionId: string): Promise<void>;
   visibleSessionIds(): readonly string[];
   agentDir?: string;
@@ -71,45 +50,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-export function isAbortedAgentEnd(messages: readonly unknown[]): boolean {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (isRecord(message) && message.role === "assistant") return message.stopReason === "aborted";
-  }
-  return false;
-}
-
-export function extractFinalText(messages: readonly unknown[]): string {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) continue;
-    for (let partIndex = message.content.length - 1; partIndex >= 0; partIndex--) {
-      const part = message.content[partIndex];
-      if (isRecord(part) && part.type === "text" && typeof part.text === "string" && part.text.trim().length > 0) {
-        return part.text;
-      }
-    }
-    return "<none>";
-  }
-  return "<none>";
-}
-
 /** Caller-scoped service for blocking/async runs and direct-child management. */
-export class BlockingSubagentService {
-  private readonly options: BlockingSubagentOptions;
+export class SubagentService {
+  private readonly options: SubagentServiceOptions;
   private readonly definitions: ReadonlyMap<string, AgentDefinition>;
   private readonly coordinator: StructuredCoordinator;
   private readonly parentId?: string;
   private readonly active = new Map<string, ActiveExecution>();
-  private readonly childServices = new Map<string, BlockingSubagentService>();
+  private readonly childServices = new Map<string, SubagentService>();
   private continuation?: ContinuationHost;
   private disposed = false;
 
-  constructor(options: BlockingSubagentOptions) {
+  constructor(options: SubagentServiceOptions) {
     this.options = options;
     this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
     this.parentId = options.parentId;
@@ -162,7 +114,7 @@ export class BlockingSubagentService {
     const nestedService = this.createNestedService(record, subagentId, definition);
     this.childServices.set(subagentId, nestedService);
     const nestedTool = definition.tools.includes("subagent")
-      ? createSubagentTool(nestedService, callerCatalog)
+      ? this.options.toolFactory(nestedService, callerCatalog)
       : undefined;
 
     let run: ChildRun;
@@ -328,7 +280,7 @@ export class BlockingSubagentService {
     await this.cancelActive("runtime shutting down");
   }
 
-  private findOwner(subagentId: string): BlockingSubagentService | undefined {
+  private findOwner(subagentId: string): SubagentService | undefined {
     if (this.active.has(subagentId)) return this;
     for (const child of this.childServices.values()) {
       const owner = child.findOwner(subagentId);
@@ -409,9 +361,9 @@ export class BlockingSubagentService {
     await this.continuation!.send(notice);
   }
 
-  private createNestedService(record: SessionRecord, parentId: string, definition: AgentDefinition): BlockingSubagentService {
+  private createNestedService(record: SessionRecord, parentId: string, definition: AgentDefinition): SubagentService {
     const native = record.native as NativeOwnershipSession | undefined;
-    return new BlockingSubagentService({
+    return new SubagentService({
       ...this.options,
       coordinator: this.coordinator,
       parentId,
@@ -423,163 +375,4 @@ export class BlockingSubagentService {
       visibleSessionIds: () => native ? ownedSessionIds(native.getBranch()) : [],
     });
   }
-}
-
-const actionSchema = (agentSchema: TSchema) => Type.Union([
-  Type.Object({
-    action: Type.Literal("run"),
-    agent: agentSchema,
-    task: Type.String({ minLength: 1 }),
-    sessionId: Type.Optional(Type.String()),
-    async: Type.Optional(Type.Boolean()),
-  }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("list-definitions") }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("list-subagents") }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("list-sessions") }, { additionalProperties: false }),
-  Type.Object({
-    action: Type.Literal("wait"),
-    subagentIds: Type.Array(Type.String({ pattern: "^[0-9a-f]{8}$" }), { minItems: 1, uniqueItems: true }),
-  }, { additionalProperties: false }),
-  Type.Object({
-    action: Type.Literal("cancel"),
-    subagentId: Type.String({ pattern: "^[0-9a-f]{8}$" }),
-  }, { additionalProperties: false }),
-], { type: "object" });
-
-interface SubagentToolDetails {
-  action: string;
-  async?: boolean;
-  subagentId?: string;
-  sessionId?: string;
-  count?: number;
-  snapshot?: SubagentSnapshot;
-}
-
-function textResult(value: string, details: SubagentToolDetails): AgentToolResult<SubagentToolDetails> {
-  return { content: [{ type: "text", text: truncateForTool(value) }], details };
-}
-
-function emptyResult(details: SubagentToolDetails): AgentToolResult<SubagentToolDetails> {
-  return { content: [], details };
-}
-
-interface SubagentToolService {
-  run(request: RunRequest, environment: RunEnvironment): Promise<RunResponse>;
-  listSubagents(): readonly Record<string, unknown>[];
-  listSessions(): Promise<readonly Record<string, unknown>[]>;
-  wait(subagentIds: readonly string[]): Promise<void>;
-  cancel(subagentId: string): Promise<void>;
-}
-
-export function createSubagentTool(service: SubagentToolService, caller: CallerCatalog): ToolDefinition {
-  return {
-    name: "subagent",
-    label: "subagent",
-    description: "Run and manage configured subagents and their Sessions.",
-    parameters: actionSchema(caller.agentSchema),
-    async execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
-      const action = (params as { action: string }).action;
-      if (action === "run") {
-        const request = params as unknown as RunRequest;
-        let latestSnapshot: SubagentSnapshot | undefined;
-        const result = await service.run(request, {
-          cwd: ctx.cwd,
-          creatorModel: ctx.model,
-          signal,
-          toolCallId,
-          onSnapshot: (snapshot) => {
-            latestSnapshot = snapshot;
-            onUpdate?.({
-              content: [],
-              details: { action, async: request.async === true, subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, snapshot },
-            });
-          },
-        });
-        return textResult(result.result, {
-          action,
-          async: request.async === true,
-          subagentId: result.subagentId,
-          sessionId: result.sessionId,
-          snapshot: latestSnapshot,
-        });
-      }
-      if (action === "list-definitions") return textResult(caller.discovery, { action, count: caller.definitions.length });
-      if (action === "list-subagents") {
-        const entries = service.listSubagents();
-        return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
-      }
-      if (action === "list-sessions") {
-        const entries = await service.listSessions();
-        return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
-      }
-      if (action === "wait") {
-        await service.wait((params as unknown as { subagentIds: string[] }).subagentIds);
-        return textResult("wait complete", { action });
-      }
-      if (action === "cancel") {
-        await service.cancel((params as unknown as { subagentId: string }).subagentId);
-        return emptyResult({ action });
-      }
-      throw new Error(`Unknown subagent action '${action}'`);
-    },
-    renderCall(args, theme) {
-      const action = (args as { action: string }).action;
-      let header = theme.fg("toolTitle", theme.bold(`subagent ${action}`));
-      if (action === "run") {
-        const run = args as unknown as RunRequest;
-        header = theme.fg("toolTitle", theme.bold("subagent run ")) + theme.fg("accent", run.agent);
-        if (run.async) header += theme.fg("muted", " (async)");
-      } else if (action === "wait") {
-        const ids = (args as unknown as { subagentIds: string[] }).subagentIds;
-        header = theme.fg("toolTitle", theme.bold("subagent wait ")) + theme.fg("accent", ids.join(", "));
-      } else if (action === "cancel") {
-        const id = (args as unknown as { subagentId: string }).subagentId;
-        header = theme.fg("toolTitle", theme.bold("subagent cancel ")) + theme.fg("accent", id);
-      }
-      return new Text(header, 0, 0);
-    },
-    renderResult(result, options, theme, context) {
-      const details = result.details as SubagentToolDetails | undefined;
-      const renderState = context.state as { snapshot?: SubagentSnapshot } | undefined;
-      if (details?.snapshot && renderState) renderState.snapshot = details.snapshot;
-      const snapshot = details?.snapshot ?? renderState?.snapshot;
-      const action = details?.action ?? (context.args as { action?: string }).action;
-      const text = result.content
-        .filter((item): item is { type: "text"; text: string } => item.type === "text")
-        .map((item) => item.text)
-        .join("\n");
-      if (action === "run" && snapshot && !details?.async && !(context.args as { async?: boolean }).async) {
-        return renderSubagentTree(snapshot, theme, options.expanded, text);
-      }
-      if (options.expanded) return new Text(text, 0, 0);
-      if (details?.action === "run" && details.async && details.subagentId) {
-        return new Text(theme.fg("success", `started ${details.subagentId}`), 0, 0);
-      }
-      if (details?.action === "list-subagents") {
-        const count = details.count ?? 0;
-        return new Text(theme.fg("muted", `${count} active subagent${count === 1 ? "" : "s"}`), 0, 0);
-      }
-      if (details?.action === "list-sessions") {
-        const count = details.count ?? 0;
-        return new Text(theme.fg("muted", `${count} session${count === 1 ? "" : "s"}`), 0, 0);
-      }
-      if (details?.action === "list-definitions") {
-        const count = details.count ?? 0;
-        return new Text(theme.fg("muted", `${count} definition${count === 1 ? "" : "s"}`), 0, 0);
-      }
-      if (action === "wait" || action === "cancel") return new Text("", 0, 0);
-      return new Text(text, 0, 0);
-    },
-  };
-}
-
-export function createSubagentDiscoveryTool(caller: CallerCatalog): ToolDefinition {
-  const unavailable = (): never => { throw new Error("nested subagent coordination is unavailable"); };
-  return createSubagentTool({
-    run: async () => unavailable(),
-    listSubagents: unavailable,
-    listSessions: async () => unavailable(),
-    wait: async () => unavailable(),
-    cancel: async () => unavailable(),
-  }, caller);
 }

@@ -7,7 +7,7 @@
 
 ## Progress
 
-- [ ] Slice 1 — Separate subagent orchestration from the Tool adapter
+- [x] Slice 1 — Separate subagent orchestration from the Tool adapter
 - [ ] Slice 2 — Separate the catalog loading pipeline
 - [ ] Slice 3 — Separate Session persistence and master lifecycle operations
 - [ ] Slice 4 — Separate invocation policy from the Pi child runtime adapter
@@ -45,7 +45,7 @@ Slices 2, 3, and 4 are independent after Slice 1 establishes the shared types an
 
 ### Slice 1 — Separate subagent orchestration from the Tool adapter
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
@@ -80,6 +80,20 @@ Subagent execution and direct-child management remain behaviorally unchanged whi
 **Dependencies**
 
 - None.
+
+**Completed work**
+
+- Moved subagent contracts, result helpers, coordinator, and renamed orchestration service into focused modules.
+- Moved the TypeBox schema, Tool dispatch/results, discovery fallback, and renderer into `src/tool/`; updated production and test imports and removed the old monoliths.
+
+**Validation**
+
+- `npm test -- test/blocking-run.test.ts test/async-run.test.ts test/management-actions.test.ts test/nested-run.test.ts test/coordinator.test.ts test/structured-cancellation.test.ts test/working-lifecycle.test.ts test/definition-discovery.test.ts` — 8 files, 25 tests passed.
+- `npm run typecheck` — passed.
+- `npm test` — 17 files, 77 tests passed.
+- `test ! -e src/subagent.ts && ! rg 'typebox|@earendil-works/pi-tui|presentation' src/subagent/service.ts` — passed.
+
+**Deviations:** None.
 
 ### Slice 2 — Separate the catalog loading pipeline
 

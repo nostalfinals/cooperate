@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
-import { StructuredCoordinator } from "../src/coordinator.ts";
-import type { ChildInvocation, ChildRun } from "../src/runtime.ts";
-import type { SessionRecord, SessionStore } from "../src/sessions.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
+import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions.ts";
-import { BlockingSubagentService } from "../src/subagent.ts";
+import { SubagentService } from "../src/subagent/service.ts";
+import { createSubagentTool } from "../src/tool/subagent-tool.ts";
 
 const definition = (name: string, children: readonly string[] = []): AgentDefinition => ({
   name,
@@ -59,9 +60,10 @@ function createHarness(maxDepth = 3) {
     }),
   };
   const coordinator = new StructuredCoordinator(maxDepth, { generateId: (() => { let id = 0; return () => `${++id}`.padStart(8, "0"); })() });
-  const service = new BlockingSubagentService({
+  const service = new SubagentService({
     catalog,
     coordinator,
+    toolFactory: createSubagentTool,
     store,
     runtimeFactory,
     persistOwnership: async (id) => { rootOwnership.push(id); },
@@ -72,7 +74,7 @@ function createHarness(maxDepth = 3) {
 
 async function executeNested(invocation: ChildInvocation, params: Record<string, unknown>) {
   if (!invocation.subagentTool) throw new Error("missing nested tool");
-  return invocation.subagentTool.execute("call", params as never, undefined, undefined, {
+  return (invocation.subagentTool as ToolDefinition).execute("call", params as never, undefined, undefined, {
     cwd: "/project",
     model: { id: "parent-model" },
   } as never);

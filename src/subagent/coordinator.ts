@@ -1,40 +1,12 @@
 import { randomBytes } from "node:crypto";
-
-export type ActiveSubagentState = "running" | "waiting";
-export type TerminalSubagentState = "finished" | "failed" | "cancelled";
-
-export interface TerminalCause {
-  state: TerminalSubagentState;
-  reason?: string;
-}
-
-export interface SubagentSnapshot {
-  readonly subagentId: string;
-  readonly parentId?: string;
-  readonly agent: string;
-  readonly sessionId: string;
-  readonly task: string;
-  readonly model?: string;
-  readonly thinking?: string;
-  readonly depth: number;
-  readonly startedAt: number;
-  readonly elapsedMs: number;
-  readonly state: ActiveSubagentState | TerminalSubagentState;
-  readonly reason?: string;
-  readonly children: readonly SubagentSnapshot[];
-}
-
-export interface StartNode {
-  parentId?: string;
-  sessionId: string;
-  agent: string;
-  task: string;
-}
-
-export interface StartedNode {
-  subagentId: string;
-  depth: number;
-}
+import type {
+  ActiveSubagentState,
+  StartNode,
+  StartedNode,
+  SubagentSnapshot,
+  TerminalCause,
+  TerminalSubagentState,
+} from "./types.ts";
 
 interface CoordinatorOptions {
   generateId?: () => string;

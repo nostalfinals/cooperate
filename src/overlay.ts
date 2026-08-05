@@ -1,6 +1,6 @@
 import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, matchesKey, SelectList, Text, type Component, type SelectItem } from "@earendil-works/pi-tui";
-import type { SubagentSnapshot } from "./coordinator.ts";
+import type { SubagentSnapshot } from "./subagent/types.ts";
 import { formatElapsed, snapshotElapsed } from "./presentation.ts";
 import { compactPreview } from "./sessions.ts";
 

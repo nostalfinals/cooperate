@@ -6,9 +6,12 @@ import {
 import { createCallerCatalog, loadCatalog, type DefinitionCatalog } from "./catalog.ts";
 import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
-import { PiChildRuntimeFactory, type ChildRuntimeFactory } from "./runtime.ts";
+import { PiChildRuntimeFactory } from "./runtime.ts";
+import type { ChildRuntimeFactory } from "./subagent/ports.ts";
+import { isAbortedAgentEnd } from "./subagent/result.ts";
+import { SubagentService } from "./subagent/service.ts";
 import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
-import { BlockingSubagentService, createSubagentTool, isAbortedAgentEnd } from "./subagent.ts";
+import { createSubagentTool } from "./tool/subagent-tool.ts";
 import { renderCompletionMessage } from "./presentation.ts";
 import { SubagentsOverlay } from "./overlay.ts";
 import {
@@ -25,10 +28,10 @@ export interface CooperateExtensionOptions {
 
 class SessionCatalogState {
   readonly catalog: DefinitionCatalog;
-  readonly service: BlockingSubagentService;
+  readonly service: SubagentService;
   private disposed = false;
 
-  constructor(catalog: DefinitionCatalog, service: BlockingSubagentService) {
+  constructor(catalog: DefinitionCatalog, service: SubagentService) {
     this.catalog = catalog;
     this.service = service;
   }
@@ -110,10 +113,11 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         masterSessionId,
         cwd,
       });
-      const service = new BlockingSubagentService({
+      const service = new SubagentService({
         catalog,
         store,
         runtimeFactory,
+        toolFactory: createSubagentTool,
         agentDir,
         continuation,
         persistOwnership: async (sessionId) => {

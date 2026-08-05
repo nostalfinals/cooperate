@@ -10,7 +10,7 @@ import {
 } from "../src/catalog.ts";
 import { createCooperateExtension } from "../src/index.ts";
 import { injectDefinitionDiscovery } from "../src/prompt.ts";
-import { createSubagentTool } from "../src/subagent.ts";
+import { createSubagentTool } from "../src/tool/subagent-tool.ts";
 
 const catalog: DefinitionCatalog = {
   config: { maxDepth: 3, gcOrphanSessions: true },

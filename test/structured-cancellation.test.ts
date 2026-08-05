@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { StructuredCoordinator } from "../src/coordinator.ts";
+import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
 
 function coordinator() {
   let id = 0;

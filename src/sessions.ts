@@ -6,26 +6,9 @@ import {
   truncateTail,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import type { SessionInspection, SessionRecord, SessionStore } from "./subagent/ports.ts";
 
 export const OWNERSHIP_ENTRY = "cooperate.child-session";
-
-export interface SessionRecord {
-  sessionId: string;
-  file: string;
-  native?: unknown;
-}
-
-export interface SessionInspection {
-  task: string;
-  result: string;
-}
-
-export interface SessionStore {
-  create(): Promise<SessionRecord>;
-  open(sessionId: string): Promise<SessionRecord>;
-  list(): Promise<readonly SessionRecord[]>;
-  inspect(record: SessionRecord): Promise<SessionInspection>;
-}
 
 export interface NativeSessionStoreOptions {
   agentDir: string;

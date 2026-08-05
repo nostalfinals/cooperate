@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
 import type { CompletionNotice, ContinuationHost } from "../src/continuation.ts";
-import type { ChildRun } from "../src/runtime.ts";
-import type { SessionRecord, SessionStore } from "../src/sessions.ts";
-import { BlockingSubagentService } from "../src/subagent.ts";
+import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
+import { SubagentService } from "../src/subagent/service.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -43,8 +42,9 @@ function harness() {
     waitForStartupCommit: vi.fn(() => commitGate.promise),
     send: vi.fn(async (notice) => { notices.push(notice); }),
   };
-  const service = new BlockingSubagentService({
+  const service = new SubagentService({
     catalog, store, runtimeFactory: { start: vi.fn(async () => run) }, continuation,
+    toolFactory: () => undefined,
     persistOwnership: vi.fn(async () => undefined), visibleSessionIds: () => records.map((record) => record.sessionId),
   });
   return { service, run, promptGate, commitGate, notices };

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
 import type { ContinuationHost } from "../src/continuation.ts";
-import { StructuredCoordinator } from "../src/coordinator.ts";
-import type { ChildInvocation, ChildRun } from "../src/runtime.ts";
-import type { SessionRecord, SessionStore } from "../src/sessions.ts";
-import { BlockingSubagentService, createSubagentTool } from "../src/subagent.ts";
+import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
+import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
+import { SubagentService } from "../src/subagent/service.ts";
+import { createSubagentTool } from "../src/tool/subagent-tool.ts";
 import { createCallerCatalog } from "../src/catalog.ts";
 
 function deferred() {
@@ -32,8 +32,9 @@ function harness() {
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
   const continuation: ContinuationHost = { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) };
-  const service = new BlockingSubagentService({
+  const service = new SubagentService({
     catalog, store, continuation,
+    toolFactory: createSubagentTool,
     coordinator: new StructuredCoordinator(3, { generateId: (() => { let id = 0; return () => `${++id}`.padStart(8, "0"); })() }),
     runtimeFactory: { start: vi.fn(async (invocation) => {
       invocations.push(invocation);

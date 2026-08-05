@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
-import type { ChildRun } from "../src/runtime.ts";
-import { NativeSessionStore, type SessionRecord, type SessionStore } from "../src/sessions.ts";
-import { BlockingSubagentService, isAbortedAgentEnd } from "../src/subagent.ts";
+import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
+import { NativeSessionStore } from "../src/sessions.ts";
+import { isAbortedAgentEnd } from "../src/subagent/result.ts";
+import { SubagentService } from "../src/subagent/service.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -35,9 +36,10 @@ function harness() {
     list: vi.fn(async () => records),
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
-  const service = new BlockingSubagentService({
+  const service = new SubagentService({
     catalog,
     store,
+    toolFactory: () => undefined,
     continuation: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) },
     runtimeFactory: {
       start: vi.fn(async () => {
@@ -84,8 +86,9 @@ describe("Pi Session lifecycle cancellation", () => {
         prompt: vi.fn(async () => undefined), abort: vi.fn(), dispose: vi.fn(async () => undefined),
         messagesSinceStart: () => [{ role: "assistant", content: [{ type: "text", text: "resumed" }] }],
       };
-      const freshService = new BlockingSubagentService({
+      const freshService = new SubagentService({
         catalog, store: freshStore, runtimeFactory: { start: vi.fn(async () => run) },
+        toolFactory: () => undefined,
         persistOwnership: vi.fn(async () => undefined), visibleSessionIds: () => [crashLeft.sessionId],
       });
 
