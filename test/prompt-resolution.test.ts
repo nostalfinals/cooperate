@@ -1,12 +1,10 @@
-import { StringEnum } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, CallerCatalog } from "../src/catalog.ts";
+import type { AgentDefinition, CallerCatalog } from "../src/catalog/types.ts";
 import { PiChildRuntimeFactory, resolveInvocationSettings } from "../src/runtime.ts";
 
 const emptyCaller: CallerCatalog = {
   definitions: [],
   discovery: "No subagent is defined yet",
-  agentSchema: StringEnum([]),
 };
 
 const baseDefinition: AgentDefinition = {

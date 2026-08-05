@@ -1,4 +1,4 @@
-import type { AgentDefinition, CallerCatalog } from "../catalog.ts";
+import type { AgentDefinition, CallerCatalog } from "../catalog/types.ts";
 import type { ContinuationHost } from "../continuation.ts";
 import type {
   RunEnvironment,

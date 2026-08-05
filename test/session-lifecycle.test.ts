@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
 import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
 import { NativeSessionStore } from "../src/sessions.ts";
 import { isAbortedAgentEnd } from "../src/subagent/result.ts";

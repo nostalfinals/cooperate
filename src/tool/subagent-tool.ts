@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { CallerCatalog } from "../catalog.ts";
+import type { CallerCatalog } from "../catalog/types.ts";
 import type { RunEnvironment, RunRequest, SubagentSnapshot } from "../subagent/types.ts";
 import type { SubagentToolService } from "../subagent/ports.ts";
 import { truncateForTool } from "../sessions.ts";
@@ -27,7 +27,7 @@ export function createSubagentTool(service: SubagentToolService, caller: CallerC
     name: "subagent",
     label: "subagent",
     description: "Run and manage configured subagents and their Sessions.",
-    parameters: actionSchema(caller.agentSchema),
+    parameters: actionSchema(caller.definitions.map((definition) => definition.name)),
     async execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
       const action = (params as { action: string }).action;
       if (action === "run") {

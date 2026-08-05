@@ -1,10 +1,11 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type TSchema } from "typebox";
 
-export function actionSchema(agentSchema: TSchema): TSchema {
+export function actionSchema(agentNames: readonly string[]): TSchema {
   return Type.Union([
     Type.Object({
       action: Type.Literal("run"),
-      agent: agentSchema,
+      agent: StringEnum(agentNames, { description: "Definition name available to this caller" }),
       task: Type.String({ minLength: 1 }),
       sessionId: Type.Optional(Type.String()),
       async: Type.Optional(Type.Boolean()),

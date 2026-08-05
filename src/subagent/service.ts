@@ -1,4 +1,5 @@
-import { createCallerCatalog, type AgentDefinition, type DefinitionCatalog } from "../catalog.ts";
+import { createCallerCatalog } from "../catalog/caller-catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../catalog/types.ts";
 import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
 import { compactPreview, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "../sessions.ts";
 import type {

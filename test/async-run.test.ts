@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
 import type { CompletionNotice, ContinuationHost } from "../src/continuation.ts";
 import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
 import { SubagentService } from "../src/subagent/service.ts";

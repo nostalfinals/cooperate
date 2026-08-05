@@ -3,11 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
-import {
-  createCallerCatalog,
-  formatDefinitionDiscovery,
-  type DefinitionCatalog,
-} from "../src/catalog.ts";
+import { createCallerCatalog, formatDefinitionDiscovery } from "../src/catalog/caller-catalog.ts";
+import type { DefinitionCatalog } from "../src/catalog/types.ts";
 import { createCooperateExtension } from "../src/index.ts";
 import { injectDefinitionDiscovery } from "../src/prompt.ts";
 import { createSubagentTool } from "../src/tool/subagent-tool.ts";

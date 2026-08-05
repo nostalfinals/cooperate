@@ -9,7 +9,7 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDefinition, CallerCatalog } from "./catalog.ts";
+import type { AgentDefinition, CallerCatalog } from "./catalog/types.ts";
 import { createPiContinuationHost, type ContinuationHost } from "./continuation.ts";
 import type { ChildInvocation, ChildRun, ChildRuntimeFactory, SessionRecord } from "./subagent/ports.ts";
 import type { TerminalCause } from "./subagent/types.ts";

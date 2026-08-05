@@ -2,12 +2,9 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  CatalogError,
-  createCallerCatalog,
-  loadCatalog,
-  type CatalogLoadOptions,
-} from "../src/catalog.ts";
+import { createCallerCatalog } from "../src/catalog/caller-catalog.ts";
+import { loadCatalog } from "../src/catalog/catalog.ts";
+import { CatalogError, type CatalogLoadOptions } from "../src/catalog/types.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -168,7 +165,6 @@ describe("createCallerCatalog", () => {
     expect(caller.definitions.map(({ name, description }) => ({ name, description }))).toEqual([
       { name: "beta", description: "Beta tasks" },
     ]);
-    expect(caller.agentSchema).toMatchObject({ type: "string", enum: ["beta"] });
     expect(caller.discovery).toBe("Available subagent definitions:\n\n- beta: Beta tasks");
     expect(caller.discovery).not.toContain("alpha");
   });

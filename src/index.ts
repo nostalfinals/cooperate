@@ -3,7 +3,9 @@ import {
   type ExtensionAPI,
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import { createCallerCatalog, loadCatalog, type DefinitionCatalog } from "./catalog.ts";
+import { createCallerCatalog } from "./catalog/caller-catalog.ts";
+import { loadCatalog } from "./catalog/catalog.ts";
+import type { DefinitionCatalog } from "./catalog/types.ts";
 import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory } from "./runtime.ts";

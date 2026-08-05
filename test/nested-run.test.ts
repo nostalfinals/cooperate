@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
 import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";

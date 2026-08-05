@@ -8,7 +8,7 @@
 ## Progress
 
 - [x] Slice 1 — Separate subagent orchestration from the Tool adapter
-- [ ] Slice 2 — Separate the catalog loading pipeline
+- [x] Slice 2 — Separate the catalog loading pipeline
 - [ ] Slice 3 — Separate Session persistence and master lifecycle operations
 - [ ] Slice 4 — Separate invocation policy from the Pi child runtime adapter
 - [ ] Slice 5 — Finish the package entry point and module layout
@@ -97,7 +97,7 @@ Subagent execution and direct-child management remain behaviorally unchanged whi
 
 ### Slice 2 — Separate the catalog loading pipeline
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
@@ -130,6 +130,21 @@ Configuration loading, Definition parsing, catalog-wide validation, and caller p
 **Dependencies**
 
 - Slice 1.
+
+**Completed work**
+
+- Split catalog types, configuration loading, Definition parsing, catalog validation, and caller projection into focused modules.
+- Moved caller-constrained `StringEnum` schema construction into `src/tool/schema.ts`; updated production/tests and removed `src/catalog.ts`.
+
+**Validation**
+
+- `npm test -- test/catalog.test.ts test/definition-discovery.test.ts test/prompt-resolution.test.ts test/package.test.ts` — 4 files, 39 tests passed.
+- `npm test` — 17 files, 77 tests passed.
+- `npm run typecheck` — passed.
+- `test ! -e src/catalog.ts && ! rg 'typebox|StringEnum|agentSchema' src/catalog` — passed.
+- `git diff --check` — passed.
+
+**Deviations:** None.
 
 ### Slice 3 — Separate Session persistence and master lifecycle operations
 

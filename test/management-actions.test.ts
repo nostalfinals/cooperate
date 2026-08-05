@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
 import type { ContinuationHost } from "../src/continuation.ts";
 import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
 import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
 import { SubagentService } from "../src/subagent/service.ts";
 import { createSubagentTool } from "../src/tool/subagent-tool.ts";
-import { createCallerCatalog } from "../src/catalog.ts";
+import { createCallerCatalog } from "../src/catalog/caller-catalog.ts";
 
 function deferred() {
   let resolve!: () => void;
