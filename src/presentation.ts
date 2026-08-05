@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import { Box, Text, type Component } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "./coordinator.ts";
 import type { CompletionNotice } from "./continuation.ts";
 import { compactPreview } from "./sessions.ts";
@@ -77,18 +77,28 @@ export function renderCompletionMessage(
   options: { expanded: boolean; outputPad: number },
   theme: Theme,
 ): Component {
+  const box = new Box(options.outputPad, 1, (text) => theme.bg("customMessageBg", text));
   const notice = message.details;
+  const title = theme.fg("customMessageLabel", theme.bold("[subagent]"));
   if (!notice) {
     const content = typeof message.content === "string"
       ? message.content
       : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
-    return new Text(content, options.outputPad, 0);
+    box.addChild(new Text(`${title}\n${theme.fg("customMessageText", content)}`, 0, 0));
+    return box;
   }
-  let text = theme.fg("toolTitle", theme.bold("[subagent]")) + "\n"
-    + `Subagent ${notice.agent} ${notice.state} (ctrl+o to expand)`;
+
+  const stateColor = notice.state === "finished" ? "success" : notice.state === "failed" ? "error" : "warning";
+  let text = title + "\n"
+    + theme.fg("customMessageText", "Subagent ")
+    + theme.fg("accent", notice.agent) + " "
+    + theme.fg(stateColor, notice.state)
+    + theme.fg("muted", " (ctrl+o to expand)");
   if (options.expanded) {
-    text += `\n\n${notice.state === "finished" ? notice.result ?? "<none>" : notice.reason ?? notice.state}`;
+    const body = notice.state === "finished" ? notice.result ?? "<none>" : notice.reason ?? notice.state;
+    text += `\n\n${theme.fg("customMessageText", body)}`;
     text += "\n" + theme.fg("muted", `Session: ${notice.sessionId} · ${formatElapsed(notice.elapsedMs)}`);
   }
-  return new Text(text, options.outputPad, 0);
+  box.addChild(new Text(text, 0, 0));
+  return box;
 }
