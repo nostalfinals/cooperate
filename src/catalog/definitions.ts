@@ -5,6 +5,9 @@ import { CatalogError, type CooperateConfig, type DefinitionModel, type Thinking
 
 export type SystemPromptMode = "append" | "override";
 
+/** Wildcard entry for the `tools` and `subagents` fields: denotes the full set. */
+export const WILDCARD = "*";
+
 export interface AgentDefinition {
   name: string;
   description: string;
@@ -73,7 +76,12 @@ function extractFrontmatter(source: string, filePath: string): ExtractedFrontmat
 function parseFrontmatter(yaml: string, filePath: string): Record<string, unknown> {
   const document = parseDocument(yaml, { prettyErrors: false, uniqueKeys: true });
   if (document.errors.length > 0) {
-    throw new CatalogError(filePath, `malformed YAML: ${document.errors[0].message}`);
+    const first = document.errors[0];
+    const message = first instanceof Error ? first.message : String(first);
+    const hint = message.startsWith("Alias cannot be an empty string")
+      ? " (a bare '*' is a YAML alias indicator; write \"*\" in quotes)"
+      : "";
+    throw new CatalogError(filePath, `malformed YAML: ${message}${hint}`);
   }
 
   const value: unknown = document.toJS();
@@ -113,7 +121,20 @@ function commaSeparatedList(frontmatter: Record<string, unknown>, field: string,
     if (seen.has(entry)) throw new CatalogError(filePath, `${field} contains duplicate entry '${entry}'`);
     seen.add(entry);
   }
+  if (entries.includes(WILDCARD) && entries.length > 1) {
+    throw new CatalogError(filePath, `${field} cannot combine '${WILDCARD}' with named entries`);
+  }
   return entries;
+}
+
+/** Whether the entries are exactly the wildcard, i.e. denote the full set. */
+export function isWildcard(entries: readonly string[]): boolean {
+  return entries.length === 1 && entries[0] === WILDCARD;
+}
+
+/** Whether the entries include the given entry, with the wildcard implying everything. */
+export function includesEntry(entries: readonly string[], entry: string): boolean {
+  return entries.includes(WILDCARD) || entries.includes(entry);
 }
 
 function parseModel(value: string | undefined, filePath: string): DefinitionModel | undefined {

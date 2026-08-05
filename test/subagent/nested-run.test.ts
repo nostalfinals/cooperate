@@ -17,10 +17,10 @@ const definition = (name: string, children: readonly string[] = []): AgentDefini
   filePath: `/defs/${name}.md`,
 });
 
-function createHarness(maxDepth = 3) {
+function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"]) {
   const catalog: DefinitionCatalog = {
     config: { maxDepth, gcOrphanSessions: true },
-    definitions: [definition("parent", ["leaf"]), definition("leaf"), definition("forbidden")],
+    definitions: [definition("parent", parentChildren), definition("leaf"), definition("forbidden")],
     configPath: "/config.json",
     definitionsPath: "/defs",
   };
@@ -94,6 +94,20 @@ describe("nested subagent runs", () => {
     const parentEntries = h.ownershipBySession.get(parentInvocation.record.sessionId)!;
     expect(ownedSessionIds(parentEntries)).toEqual([h.invocations[1]!.record.sessionId]);
     expect(parentEntries[0]).toMatchObject({ customType: OWNERSHIP_ENTRY });
+    h.releaseParent();
+    await parentPending;
+  });
+
+  it("allows every definition when the subagents allowlist is the '*' wildcard", async () => {
+    const h = createHarness(3, ["*"]);
+    const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+    const parentInvocation = h.invocations[0]!;
+    expect(parentInvocation.callerCatalog.definitions.map((item) => item.name)).toEqual(["parent", "leaf", "forbidden"]);
+
+    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "forbidden task" });
+    expect(nestedResult.content).toEqual([{ type: "text", text: "forbidden result" }]);
+    expect(h.invocations[1]).toMatchObject({ definition: { name: "forbidden" }, task: "forbidden task" });
     h.releaseParent();
     await parentPending;
   });

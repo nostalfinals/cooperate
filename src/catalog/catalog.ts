@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
-import { loadDefinitions, type AgentDefinition, type DefinitionCatalog } from "./definitions.ts";
+import { loadDefinitions, WILDCARD, includesEntry, type AgentDefinition, type DefinitionCatalog } from "./definitions.ts";
 import { CatalogError, type CallerCatalog, type CatalogLoadOptions, type ModelRegistryLike } from "./types.ts";
 
 function validateDefinitions(
@@ -11,12 +11,14 @@ function validateDefinitions(
   const names = new Set(definitions.map((definition) => definition.name));
   for (const definition of definitions) {
     for (const tool of definition.tools) {
+      if (tool === WILDCARD) continue;
       if (!availableTools.has(tool)) throw new CatalogError(definition.filePath, `unavailable tool '${tool}'`);
     }
-    if (definition.subagentAgents.length > 0 && !definition.tools.includes("subagent")) {
+    if (definition.subagentAgents.length > 0 && !includesEntry(definition.tools, "subagent")) {
       throw new CatalogError(definition.filePath, "nonempty subagents requires 'subagent' in tools");
     }
     for (const child of definition.subagentAgents) {
+      if (child === WILDCARD) continue;
       if (!names.has(child)) throw new CatalogError(definition.filePath, `unknown definition '${child}' in subagents`);
     }
     if (definition.model && !modelRegistry.find(definition.model.provider, definition.model.modelId)) {

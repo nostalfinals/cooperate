@@ -43,6 +43,7 @@ describe("Pi child runtime adapter", () => {
       messages,
       getAllTools: () => [{ name: "read" }, { name: "custom" }, { name: "extra" }],
       getActiveToolNames: () => ["read", "custom"],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(async (task: string) => { messages.push({ role: "user", content: task }); }),
       abort: vi.fn(),
@@ -92,6 +93,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [{ name: "subagent" }],
       getActiveToolNames: () => ["subagent"],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
@@ -117,6 +119,56 @@ describe("Pi child runtime adapter", () => {
     expect(result?.content).toEqual([{ type: "text", text: emptyCaller.discovery }]);
   });
 
+  it("activates every available tool when the tools allowlist is the '*' wildcard", async () => {
+    let sessionOptions: Record<string, unknown> | undefined;
+    let activeToolNames: string[] = [];
+    const session = {
+      messages: [],
+      getAllTools: () => [{ name: "read" }, { name: "bash" }, { name: "extra" }],
+      getActiveToolNames: () => activeToolNames,
+      setActiveToolsByName: vi.fn((names: string[]) => { activeToolNames = [...names]; }),
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createSession: async (input) => {
+        sessionOptions = input as unknown as Record<string, unknown>;
+        return { session, dispose: async () => session.dispose() };
+      },
+    });
+
+    await factory.start({
+      cwd: "/project",
+      definition: { ...baseDefinition, tools: ["*"] },
+      callerCatalog: emptyCaller,
+      record: { sessionId: "id", file: "/id", native: {} },
+      creatorModel: {},
+      task: "task",
+    });
+
+    expect(sessionOptions).toMatchObject({ tools: undefined, customTools: [expect.anything()] });
+    expect(session.setActiveToolsByName).toHaveBeenCalledWith(["read", "bash", "extra"]);
+  });
+
+  it("fails the wildcard invocation when activation does not cover every available tool", async () => {
+    const session = {
+      messages: [],
+      getAllTools: () => [{ name: "read" }, { name: "bash" }],
+      getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createSession: async () => ({ session, dispose: async () => session.dispose() }),
+    });
+
+    await expect(factory.start({ cwd: "/project", definition: { ...baseDefinition, tools: ["*"] }, callerCatalog: emptyCaller, record: { sessionId: "id", file: "/id", native: {} }, creatorModel: {}, task: "task" })).rejects.toThrow();
+    expect(session.dispose).toHaveBeenCalledOnce();
+  });
+
   it("adds an awaited agent_end hook for the child's structured descendant scope", async () => {
     let extensionFactories: Array<{ factory: (pi: any) => void }> | undefined;
     let endHandler: ((event: { messages: any[] }) => Promise<void>) | undefined;
@@ -127,6 +179,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [],
       getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
@@ -167,6 +220,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [],
       getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
@@ -209,6 +263,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [],
       getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
@@ -246,6 +301,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [],
       getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
@@ -278,6 +334,7 @@ describe("Pi child runtime adapter", () => {
       messages: [],
       getAllTools: () => [{ name: "read" }],
       getActiveToolNames: () => ["read"],
+      setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };

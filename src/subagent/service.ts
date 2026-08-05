@@ -1,5 +1,5 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
-import type { AgentDefinition, DefinitionCatalog } from "../catalog/definitions.ts";
+import { includesEntry, isWildcard, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
 import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
@@ -98,7 +98,7 @@ export class SubagentService {
       await this.options.persistOwnership(record.sessionId);
     }
 
-    if (definition.tools.includes("subagent") && !record.native) {
+    if (includesEntry(definition.tools, "subagent") && !record.native) {
       throw new Error("child session record has no native SessionManager for nested ownership");
     }
     const started = this.coordinator.start({
@@ -108,10 +108,11 @@ export class SubagentService {
       task: request.task,
     });
     const subagentId = started.subagentId;
-    const callerCatalog = createCallerCatalog(this.options.catalog, definition.subagentAgents);
-    const nestedService = this.createNestedService(record, subagentId, definition);
+    const unrestrictedChildren = isWildcard(definition.subagentAgents);
+    const callerCatalog = createCallerCatalog(this.options.catalog, unrestrictedChildren ? undefined : definition.subagentAgents);
+    const nestedService = this.createNestedService(record, subagentId, definition, unrestrictedChildren);
     this.childServices.set(subagentId, nestedService);
-    const nestedTool = definition.tools.includes("subagent")
+    const nestedTool = includesEntry(definition.tools, "subagent")
       ? this.options.toolFactory(nestedService, callerCatalog)
       : undefined;
 
@@ -359,13 +360,18 @@ export class SubagentService {
     await this.continuation!.send(notice);
   }
 
-  private createNestedService(record: SessionRecord, parentId: string, definition: AgentDefinition): SubagentService {
+  private createNestedService(
+    record: SessionRecord,
+    parentId: string,
+    definition: AgentDefinition,
+    unrestrictedChildren: boolean,
+  ): SubagentService {
     const native = record.native as NativeOwnershipSession | undefined;
     return new SubagentService({
       ...this.options,
       coordinator: this.coordinator,
       parentId,
-      allowedDefinitions: definition.subagentAgents,
+      allowedDefinitions: unrestrictedChildren ? undefined : definition.subagentAgents,
       continuation: new ContinuationRelay(),
       persistOwnership: async (sessionId) => {
         native?.appendCustomEntry(OWNERSHIP_ENTRY, { sessionId });

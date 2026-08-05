@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createPiContinuationHost } from "../continuation.ts";
 import { subagentRoleBlock } from "../prompt.ts";
-import type { AgentDefinition } from "../catalog/definitions.ts";
+import { includesEntry, isWildcard, type AgentDefinition } from "../catalog/definitions.ts";
 import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";
 import type { ChildRuntimeFactory, ModelRuntimeLike, SubagentInvocation, SubagentRun } from "./types.ts";
 
@@ -28,6 +28,7 @@ interface SessionLike {
   readonly messages: unknown[];
   getAllTools(): Array<{ name: string }>;
   getActiveToolNames(): string[];
+  setActiveToolsByName(toolNames: string[]): void;
   bindExtensions(bindings: { mode: "print"; abortHandler: () => void }): Promise<void>;
   prompt(task: string): Promise<void>;
   abort(): void;
@@ -48,7 +49,7 @@ interface RuntimeSdk {
     sessionManager: unknown;
     model: unknown;
     thinkingLevel: ThinkingLevel;
-    tools: string[];
+    tools?: string[];
     customTools?: ToolDefinition[];
   }): Promise<{ session: SessionLike; dispose(): Promise<void> }>;
 }
@@ -180,13 +181,14 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     );
     if (!invocation.record.native) throw new Error("child session record has no native SessionManager");
 
+    const allTools = isWildcard(invocation.definition.tools);
     const created = await this.sdk.createSession({
       services,
       sessionManager: invocation.record.native,
       model: modelConfig.model,
       thinkingLevel: modelConfig.thinking,
-      tools: [...invocation.definition.tools],
-      customTools: invocation.definition.tools.includes("subagent")
+      tools: allTools ? undefined : [...invocation.definition.tools],
+      customTools: includesEntry(invocation.definition.tools, "subagent")
         ? [(invocation.subagentTool as ToolDefinition | undefined) ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
         : undefined,
     });
@@ -194,9 +196,14 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
 
     try {
       await session.bindExtensions({ mode: "print", abortHandler: () => session.abort() });
+      const availableTools = session.getAllTools().map((tool) => tool.name);
+      if (allTools) {
+        // A wildcard definition activates every tool available to the child runtime.
+        session.setActiveToolsByName(availableTools);
+      }
       exactTools(
-        invocation.definition.tools,
-        session.getAllTools().map((tool) => tool.name),
+        allTools ? availableTools : invocation.definition.tools,
+        availableTools,
         session.getActiveToolNames(),
       );
     } catch (error) {

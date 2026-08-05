@@ -130,6 +130,7 @@ describe("loadCatalog", () => {
     ["unknown model", "model: test/missing"],
     ["unknown child", "tools: subagent\nsubagents: missing"],
     ["children without tool", "subagents: scout"],
+    ["wildcard children without tool", "subagents: \"*\""],
   ])("rejects unresolved catalog relationships atomically: %s", async (_label, fields) => {
     const { agentDir, options } = await fixture();
     await definition(agentDir, "one.md", `---\nname: one\ndescription: One\n${fields}\n---\nBody`);
@@ -154,12 +155,35 @@ describe("loadCatalog", () => {
     });
   });
 
-  it("rejects duplicate authoritative names even when filenames differ", async () => {
+  it("treats '*' as the full tools and subagents set", async () => {
     const { agentDir, options } = await fixture();
-    await definition(agentDir, "a.md", "---\nname: same\ndescription: A\n---\nA");
-    await definition(agentDir, "b.md", "---\nname: same\ndescription: B\n---\nB");
+    await definition(agentDir, "scout.md", "---\nname: scout\ndescription: Scout\ntools: read\n---\nScout");
+    await definition(agentDir, "worker.md", "---\nname: worker\ndescription: Worker\ntools: \"*\"\nsubagents: \"*\"\n---\nWorker");
+
+    const catalog = await loadCatalog(options);
+
+    expect(catalog.definitions.map((item) => item.name)).toEqual(["scout", "worker"]);
+    expect(catalog.definitions[1]).toMatchObject({ tools: ["*"], subagentAgents: ["*"] });
+  });
+
+  it.each([
+    ["bare star", "---\nname: one\ndescription: One\ntools: *\n---\nBody"],
+    ["star mixed with named tool", "---\nname: one\ndescription: One\ntools: read, \"*\"\n---\nBody"],
+    ["star mixed with named child", "---\nname: one\ndescription: One\ntools: subagent\nsubagents: scout, \"*\"\n---\nBody"],
+  ])("rejects invalid star usage: %s", async (_label, content) => {
+    const { agentDir, options } = await fixture();
+    await definition(agentDir, "invalid.md", content);
 
     await expect(loadCatalog(options)).rejects.toThrow();
+  });
+
+  it("explains that a bare '*' must be quoted in YAML", async () => {
+    const { agentDir, options } = await fixture();
+    await definition(agentDir, "one.md", "---\nname: one\ndescription: One\ntools: *\n---\nBody");
+
+    await expect(loadCatalog(options)).rejects.toSatisfy(
+      (error: unknown) => error instanceof CatalogError && error.message.includes('write "*" in quotes'),
+    );
   });
 });
 
