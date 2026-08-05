@@ -152,3 +152,5 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
   };
 }
+
+export default createCooperateExtension();
