@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
 import type { SubagentRun } from "../../src/runtime/types.ts";
-import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
-import { NativeSessionStore } from "../../src/sessions/native-store.ts";
+import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
+import { NativeSessionStore } from "../../src/session/native-store.ts";
 import { isAbortedAgentEnd } from "../../src/subagent/result.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
 

@@ -3,7 +3,7 @@ import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/defin
 import type { ContinuationHost } from "../../src/continuation.ts";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
-import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
 import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 import { createCallerCatalog } from "../../src/catalog/catalog.ts";

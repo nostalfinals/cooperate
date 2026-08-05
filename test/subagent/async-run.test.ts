@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
 import type { CompletionNotice, ContinuationHost } from "../../src/continuation.ts";
 import type { SubagentRun } from "../../src/runtime/types.ts";
-import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
 
 function deferred() {

@@ -3,8 +3,8 @@ import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/defin
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
-import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
+import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/session/ownership.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
 import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 

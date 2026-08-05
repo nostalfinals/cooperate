@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/session/ownership.ts";
 
 describe("branch-visible session ownership", () => {
   it("survives compaction because native custom entries remain on the branch", () => {

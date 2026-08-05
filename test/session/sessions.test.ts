@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { NativeSessionStore } from "../../src/sessions/native-store.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
+import { NativeSessionStore } from "../../src/session/native-store.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/session/ownership.ts";
 import { truncateForTool } from "../../src/text.ts";
 
 const directories: string[] = [];

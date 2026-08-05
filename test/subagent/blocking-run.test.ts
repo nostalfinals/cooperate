@@ -3,7 +3,7 @@ import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/defin
 import { SubagentService } from "../../src/subagent/service.ts";
 import { extractFinalText } from "../../src/subagent/result.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
-import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
 
 const definition = (name = "worker"): AgentDefinition => ({
   name,

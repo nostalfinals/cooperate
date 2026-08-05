@@ -1,9 +1,9 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
 import type { AgentDefinition, DefinitionCatalog } from "../catalog/definitions.ts";
 import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../sessions/ownership.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
-import type { SessionRecord, SessionStore } from "../sessions/types.ts";
+import type { SessionRecord, SessionStore } from "../session/types.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";

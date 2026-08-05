@@ -6,7 +6,7 @@ import {
   collectMasterSessionIds,
   garbageCollectOrphanSessions,
   selectOrphanSessionDirectories,
-} from "../../src/sessions/orphan-gc.ts";
+} from "../../src/session/orphan-gc.ts";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
@@ -64,7 +64,7 @@ describe("orphan master session cleanup", () => {
     const source = join(agentDir, "cooperate", "sessions", "source-master");
     await mkdir(source, { recursive: true });
     await writeFile(join(source, "child.jsonl"), "source bytes\n");
-    const { copyMasterSessionDirectory } = await import("../../src/sessions/master-copy.ts");
+    const { copyMasterSessionDirectory } = await import("../../src/session/master-copy.ts");
 
     await copyMasterSessionDirectory(agentDir, "source-master", "fork-master", { stagingName: ".copy-stage" });
     await garbageCollectOrphanSessions(agentDir, new Set(["fork-master"]), { trash: async () => false });
