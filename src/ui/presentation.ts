@@ -1,7 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Box, Text, type Component } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "../subagent/types.ts";
-import type { CompletionNotice } from "../subagent/continuation.ts";
+import type { CompletionNotice } from "../subagent/messenger.ts";
 import { compactPreview } from "../text.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

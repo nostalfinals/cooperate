@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, loadCatalog } from "./catalog/catalog.ts";
 import type { DefinitionCatalog } from "./catalog/definitions.ts";
-import { COMPLETION_MESSAGE, createPiContinuationHost } from "./subagent/continuation.ts";
+import { COMPLETION_MESSAGE, createCompletionMessenger } from "./subagent/messenger.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory } from "./runtime/runtime.ts";
 import type { ChildRuntimeFactory } from "./runtime/types.ts";
@@ -48,7 +48,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
   return (pi: ExtensionAPI) => {
     let state: SessionCatalogState | undefined;
     let sessionGeneration = 0;
-    const continuation = createPiContinuationHost(pi);
+    const messenger = createCompletionMessenger(pi);
     pi.registerMessageRenderer(COMPLETION_MESSAGE, renderCompletionMessage);
     pi.registerCommand("subagents", {
       description: "Inspect and cancel the active subagent tree",
@@ -117,7 +117,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         runtimeFactory,
         toolFactory: createSubagentTool,
         agentDir,
-        continuation,
+        messenger,
         persistOwnership: async (sessionId) => {
           pi.appendEntry(OWNERSHIP_ENTRY, { sessionId });
         },

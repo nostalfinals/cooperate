@@ -1,6 +1,6 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
 import { includesEntry, isWildcard, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
-import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "./continuation.ts";
+import { type CompletionNotice, type Messenger, DeferredMessenger } from "./messenger.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
@@ -21,7 +21,7 @@ export interface SubagentServiceOptions {
   coordinator?: StructuredCoordinator;
   parentId?: string;
   allowedDefinitions?: readonly string[];
-  continuation?: ContinuationHost;
+  messenger?: Messenger;
 }
 
 interface NativeOwnershipSession {
@@ -56,23 +56,23 @@ export class SubagentService {
   private readonly parentId?: string;
   private readonly active = new Map<string, ActiveExecution>();
   private readonly childServices = new Map<string, SubagentService>();
-  private continuation?: ContinuationHost;
+  private messenger?: Messenger;
   private disposed = false;
 
   constructor(options: SubagentServiceOptions) {
     this.options = options;
     this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
     this.parentId = options.parentId;
-    this.continuation = options.continuation;
+    this.messenger = options.messenger;
     const allowed = options.allowedDefinitions ? new Set(options.allowedDefinitions) : undefined;
     this.definitions = new Map(options.catalog.definitions
       .filter((definition) => !allowed || allowed.has(definition.name))
       .map((definition) => [definition.name, definition]));
   }
 
-  bindContinuationHost(host: ContinuationHost): void {
-    if (this.continuation instanceof ContinuationRelay) this.continuation.bind(host);
-    else this.continuation = host;
+  bindMessenger(messenger: Messenger): void {
+    if (this.messenger instanceof DeferredMessenger) this.messenger.bind(messenger);
+    else this.messenger = messenger;
   }
 
   async run(request: RunRequest, environment: RunEnvironment): Promise<RunResponse> {
@@ -80,8 +80,8 @@ export class SubagentService {
     const definition = this.definitions.get(request.agent);
     if (!definition) throw new Error(`Definition '${request.agent}' is not available to this caller`);
     if (request.task.trim().length === 0) throw new Error("task must be nonempty");
-    if (request.async && !this.continuation) {
-      throw new Error("asynchronous subagent startup requires a bound continuation");
+    if (request.async && !this.messenger) {
+      throw new Error("asynchronous subagent startup requires a bound messenger");
     }
     // Depth must win over Session creation, ownership, and locking side effects.
     this.coordinator.assertCanStart(this.parentId);
@@ -127,7 +127,7 @@ export class SubagentService {
         creatorModel: environment.creatorModel,
         task: request.task,
         subagentTool: nestedTool,
-        onContinuationHost: (host) => nestedService.bindContinuationHost(host),
+        onMessenger: (messenger) => nestedService.bindMessenger(messenger),
         onAgentEnd: async (terminal) => {
           this.coordinator.ownLoopEnded(subagentId, terminal);
           await this.coordinator.waitForDescendants(subagentId);
@@ -172,7 +172,7 @@ export class SubagentService {
 
     if (request.async) {
       const startupCommitted = environment.toolCallId
-        ? this.continuation!.waitForStartupCommit(environment.toolCallId)
+        ? this.messenger!.waitForStartupCommit(environment.toolCallId)
         : Promise.resolve();
       handle.done = this.completeAsync(handle, outcomePromise, startupCommitted)
         .finally(() => {
@@ -357,7 +357,7 @@ export class SubagentService {
         ? { result: outcome.result ?? "<none>" }
         : { reason: snapshot.reason ?? outcome.error?.message ?? snapshot.state }),
     };
-    await this.continuation!.send(notice);
+    await this.messenger!.send(notice);
   }
 
   private createNestedService(
@@ -372,7 +372,7 @@ export class SubagentService {
       coordinator: this.coordinator,
       parentId,
       allowedDefinitions: unrestrictedChildren ? undefined : definition.subagentAgents,
-      continuation: new ContinuationRelay(),
+      messenger: new DeferredMessenger(),
       persistOwnership: async (sessionId) => {
         native?.appendCustomEntry(OWNERSHIP_ENTRY, { sessionId });
       },

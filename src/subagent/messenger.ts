@@ -1,6 +1,6 @@
 import { truncateHead, truncateTail, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-export const COMPLETION_MESSAGE = "cooperate.subagent-completion";
+export const COMPLETION_MESSAGE = "subagent";
 
 export interface CompletionNotice {
   agent: string;
@@ -11,7 +11,7 @@ export interface CompletionNotice {
   elapsedMs: number;
 }
 
-export interface ContinuationHost {
+export interface Messenger {
   waitForStartupCommit(toolCallId: string): Promise<void>;
   send(notice: CompletionNotice): Promise<void>;
 }
@@ -40,8 +40,7 @@ function completionContent(notice: CompletionNotice): string {
   return bounded(content);
 }
 
-/** Pi event adapter for durable completion delivery and async-start commit gating. */
-export function createPiContinuationHost(pi: ExtensionAPI): ContinuationHost {
+export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
   let ending = false;
   const commits = new Map<string, Deferred>();
 
@@ -81,24 +80,23 @@ export function createPiContinuationHost(pi: ExtensionAPI): ContinuationHost {
   };
 }
 
-/** Mutable bridge used while a child tool is built before its Pi runtime binds. */
-export class ContinuationRelay implements ContinuationHost {
-  private host?: ContinuationHost;
+export class DeferredMessenger implements Messenger {
+  private messenger?: Messenger;
   private readonly ready = deferred();
 
-  bind(host: ContinuationHost): void {
-    if (this.host) return;
-    this.host = host;
+  bind(messenger: Messenger): void {
+    if (this.messenger) return;
+    this.messenger = messenger;
     this.ready.resolve();
   }
 
   async waitForStartupCommit(toolCallId: string): Promise<void> {
     await this.ready.promise;
-    await this.host!.waitForStartupCommit(toolCallId);
+    await this.messenger!.waitForStartupCommit(toolCallId);
   }
 
   async send(notice: CompletionNotice): Promise<void> {
     await this.ready.promise;
-    await this.host!.send(notice);
+    await this.messenger!.send(notice);
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
-import type { CompletionNotice, ContinuationHost } from "../../src/subagent/continuation.ts";
+import type { CompletionNotice, Messenger } from "../../src/subagent/messenger.ts";
 import type { SubagentRun } from "../../src/runtime/types.ts";
 import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
@@ -39,12 +39,12 @@ function harness() {
     dispose: vi.fn(async () => undefined),
     messagesSinceStart: () => [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
   };
-  const continuation: ContinuationHost = {
+  const messenger: Messenger = {
     waitForStartupCommit: vi.fn(() => commitGate.promise),
     send: vi.fn(async (notice) => { notices.push(notice); }),
   };
   const service = new SubagentService({
-    catalog, store, runtimeFactory: { start: vi.fn(async () => run) }, continuation,
+    catalog, store, runtimeFactory: { start: vi.fn(async () => run) }, messenger,
     toolFactory: () => undefined,
     persistOwnership: vi.fn(async () => undefined), visibleSessionIds: () => records.map((record) => record.sessionId),
   });

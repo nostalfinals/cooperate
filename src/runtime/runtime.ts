@@ -9,7 +9,7 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createPiContinuationHost } from "../subagent/continuation.ts";
+import { createCompletionMessenger } from "../subagent/messenger.ts";
 import { subagentRoleBlock } from "../prompt.ts";
 import { includesEntry, isWildcard, type AgentDefinition } from "../catalog/definitions.ts";
 import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";
@@ -146,7 +146,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       name: "cooperate-structured-scope",
       hidden: true,
       factory: (pi) => {
-        invocation.onContinuationHost?.(createPiContinuationHost(pi));
+        invocation.onMessenger?.(createCompletionMessenger(pi));
         if (systemPromptMode === "override") {
           pi.on("before_agent_start", () => ({ systemPrompt: invocation.definition.body }));
         }

@@ -41,7 +41,7 @@ function harness() {
     catalog,
     store,
     toolFactory: () => undefined,
-    continuation: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) },
+    messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) },
     runtimeFactory: {
       start: vi.fn(async () => {
         const gate = deferred();

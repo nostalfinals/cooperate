@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
-import type { ContinuationHost } from "../../src/subagent/continuation.ts";
+import type { Messenger } from "../../src/subagent/messenger.ts";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
 import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
@@ -32,9 +32,9 @@ function harness() {
     list: vi.fn(async () => records),
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
-  const continuation: ContinuationHost = { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) };
+  const messenger: Messenger = { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) };
   const service = new SubagentService({
-    catalog, store, continuation,
+    catalog, store, messenger,
     toolFactory: createSubagentTool,
     coordinator: new StructuredCoordinator(3, { generateId: (() => { let id = 0; return () => `${++id}`.padStart(8, "0"); })() }),
     runtimeFactory: { start: vi.fn(async (invocation) => {
@@ -50,7 +50,7 @@ function harness() {
     }) },
     persistOwnership: vi.fn(async () => undefined), visibleSessionIds: () => records.map((record) => record.sessionId),
   });
-  return { service, gates, runs, continuation };
+  return { service, gates, runs, messenger };
 }
 
 describe("direct child management actions", () => {
@@ -76,8 +76,8 @@ describe("direct child management actions", () => {
     await h.service.cancel(started.subagentId!);
     expect(h.runs[0]!.abort).toHaveBeenCalledOnce();
     expect(h.runs[0]!.dispose).toHaveBeenCalledOnce();
-    expect(h.continuation.send).toHaveBeenCalledOnce();
-    expect(vi.mocked(h.continuation.send).mock.calls[0]![0]).toMatchObject({ state: "cancelled", agent: "worker" });
+    expect(h.messenger.send).toHaveBeenCalledOnce();
+    expect(vi.mocked(h.messenger.send).mock.calls[0]![0]).toMatchObject({ state: "cancelled", agent: "worker" });
     await expect(h.service.cancel(started.subagentId!)).rejects.toThrow();
   });
 

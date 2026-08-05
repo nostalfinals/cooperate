@@ -1,6 +1,6 @@
 import type { AgentDefinition } from "../catalog/definitions.ts";
 import type { CallerCatalog, ThinkingLevel } from "../catalog/types.ts";
-import type { ContinuationHost } from "../subagent/continuation.ts";
+import type { Messenger } from "../subagent/messenger.ts";
 import type { SessionRecord } from "../session/types.ts";
 import type {
   RunEnvironment,
@@ -24,7 +24,7 @@ export interface SubagentInvocation {
   creatorModel: unknown;
   task: string;
   subagentTool?: unknown;
-  onContinuationHost?(host: ContinuationHost): void;
+  onMessenger?(messenger: Messenger): void;
   onAgentEnd?(cause: TerminalCause): Promise<void>;
 }
 
