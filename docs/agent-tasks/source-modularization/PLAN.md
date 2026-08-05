@@ -288,7 +288,7 @@ The extension loads from a minimal entry point, all concrete implementations are
 
 **Completed work**
 
-- Moved the composition root to `src/extension.ts`, reduced `src/index.ts` to the named factory/default entry, and moved UI modules under `src/ui/`.
+- Merged the composition root and event handlers into `src/index.ts` at the user's explicit request, and kept UI modules under `src/ui/`.
 - Updated all owning imports and verified the final source layout, package contents, and offline Pi loading.
 
 **Validation**
@@ -297,10 +297,10 @@ The extension loads from a minimal entry point, all concrete implementations are
 - `npm run typecheck` — passed.
 - `npm pack --dry-run` — passed; package contains the entry point and reorganized source.
 - `PI_OFFLINE=1 pi -e . --help` — passed.
-- `test "$(find src -maxdepth 1 -type f -printf '%f\\n' | sort | paste -sd, -)" = "continuation.ts,extension.ts,index.ts,prompt.ts,text.ts"` — passed.
+- `test ! -e src/extension.ts && test ! -e src/presentation.ts && test ! -e src/overlay.ts && test -e src/ui/presentation.ts && test -e src/ui/subagents-overlay.ts && test "$(find src -maxdepth 1 -type f -printf '%f\\n' | sort | paste -sd, -)" = "continuation.ts,index.ts,prompt.ts,text.ts"` — passed.
 - `git diff --check` — passed.
 
-**Deviations:** None.
+**Deviations:** The approved extension/index split was superseded by the user's explicit request to merge the composition root into `src/index.ts`; behavior and package entry metadata remain unchanged.
 
 ## Final verification
 
