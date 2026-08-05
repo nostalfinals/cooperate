@@ -8,7 +8,7 @@ import { loadCatalog } from "./catalog/catalog.ts";
 import type { DefinitionCatalog } from "./catalog/types.ts";
 import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
-import { PiChildRuntimeFactory } from "./runtime.ts";
+import { PiChildRuntimeFactory } from "./runtime/pi-child-runtime.ts";
 import type { ChildRuntimeFactory } from "./subagent/ports.ts";
 import { isAbortedAgentEnd } from "./subagent/result.ts";
 import { SubagentService } from "./subagent/service.ts";

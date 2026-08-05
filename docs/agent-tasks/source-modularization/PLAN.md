@@ -10,7 +10,7 @@
 - [x] Slice 1 — Separate subagent orchestration from the Tool adapter
 - [x] Slice 2 — Separate the catalog loading pipeline
 - [x] Slice 3 — Separate Session persistence and master lifecycle operations
-- [ ] Slice 4 — Separate invocation policy from the Pi child runtime adapter
+- [x] Slice 4 — Separate invocation policy from the Pi child runtime adapter
 - [ ] Slice 5 — Finish the package entry point and module layout
 
 ## Current codebase state
@@ -199,7 +199,7 @@ Ownership parsing, native Session persistence, master namespace copying, orphan 
 
 ### Slice 4 — Separate invocation policy from the Pi child runtime adapter
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
@@ -230,6 +230,21 @@ Model/thinking selection is isolated from Pi SDK session construction, and the P
 **Dependencies**
 
 - Slice 1.
+
+**Completed work**
+
+- Split invocation model/thinking policy from the Pi child-runtime SDK adapter.
+- Updated the extension and runtime tests to the new owning modules and removed `src/runtime.ts`; the adapter retains discovery fallback and has no `SubagentService` dependency.
+
+**Validation**
+
+- `npm test -- test/prompt-resolution.test.ts test/blocking-run.test.ts test/nested-run.test.ts test/async-run.test.ts test/working-lifecycle.test.ts` — 5 files, 16 tests passed.
+- `npm test` — 17 files, 77 tests passed.
+- `npm run typecheck` — passed.
+- `test ! -e src/runtime.ts && ! rg 'SubagentService' src/runtime` — passed.
+- `git diff --check` — passed.
+
+**Deviations:** None.
 
 ### Slice 5 — Finish the package entry point and module layout
 

@@ -9,11 +9,10 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDefinition, CallerCatalog } from "./catalog/types.ts";
-import { createPiContinuationHost, type ContinuationHost } from "./continuation.ts";
-import type { ChildInvocation, ChildRun, ChildRuntimeFactory, SessionRecord } from "./subagent/ports.ts";
-import type { TerminalCause } from "./subagent/types.ts";
-import { createSubagentDiscoveryTool } from "./tool/subagent-tool.ts";
+import { createPiContinuationHost } from "../continuation.ts";
+import type { ChildInvocation, ChildRun, ChildRuntimeFactory } from "../subagent/ports.ts";
+import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";
+import { modelReference, resolveInvocationSettings } from "./invocation-settings.ts";
 
 interface ModelRuntimeLike {
   getModel(provider: string, modelId: string): unknown;
@@ -82,33 +81,6 @@ const defaultSdk: RuntimeSdk = {
     };
   },
 };
-
-export function resolveInvocationSettings(
-  definition: AgentDefinition,
-  creatorModel: unknown,
-  modelRuntime: ModelRuntimeLike,
-  defaultThinking: ThinkingLevel | undefined,
-): { model: unknown; thinking: ThinkingLevel } {
-  let model: unknown;
-  if (definition.model) {
-    model = modelRuntime.getModel(definition.model.provider, definition.model.modelId);
-    if (!model) throw new Error(`Definition model '${definition.model.reference}' is unavailable at invocation time`);
-  } else {
-    model = creatorModel;
-    if (!model) throw new Error("creator has no current model");
-  }
-  return {
-    model,
-    thinking: definition.thinking ?? defaultThinking ?? "medium",
-  };
-}
-
-function modelReference(model: unknown): string {
-  if (typeof model !== "object" || model === null) return String(model ?? "unknown");
-  const value = model as { provider?: unknown; id?: unknown; modelId?: unknown };
-  const id = typeof value.id === "string" ? value.id : typeof value.modelId === "string" ? value.modelId : undefined;
-  return typeof value.provider === "string" && id ? `${value.provider}/${id}` : id ?? "unknown";
-}
 
 function terminalFailure(messages: readonly unknown[], startIndex: number): string | undefined {
   for (let index = messages.length - 1; index >= startIndex; index--) {

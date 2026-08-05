@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, CallerCatalog } from "../src/catalog/types.ts";
-import { PiChildRuntimeFactory, resolveInvocationSettings } from "../src/runtime.ts";
+import { resolveInvocationSettings } from "../src/runtime/invocation-settings.ts";
+import { PiChildRuntimeFactory } from "../src/runtime/pi-child-runtime.ts";
 
 const emptyCaller: CallerCatalog = {
   definitions: [],
