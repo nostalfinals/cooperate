@@ -65,9 +65,6 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
             onDispose: unsubscribe,
             startTimer: true,
           });
-        }, {
-          overlay: true,
-          overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%", margin: 1 },
         });
       },
     });

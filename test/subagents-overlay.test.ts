@@ -20,12 +20,16 @@ function output(overlay: SubagentsOverlay): string {
 }
 
 describe("/subagents overlay", () => {
-  it("navigates the live hierarchy and detail view within a border", () => {
+  it("uses the model-preset shell and navigates the live hierarchy into details", () => {
     const overlay = new SubagentsOverlay({ theme, snapshots: () => [root], cancel: vi.fn(), close: vi.fn(), requestRender: vi.fn() });
     const list = output(overlay);
-    expect(list).toContain("subagents");
-    expect(list).toContain("worker deadbeef running 1m05s implement feature");
-    expect(list).toContain("└─ reviewer cafebabe waiting 2s review output");
+    expect(list).toContain("Subagents");
+    expect(list).toContain("→ worker · running · 1m05s");
+    expect(list).toContain("└─ reviewer · waiting · 2s");
+    expect(list).toContain("implement feature");
+    expect(list.split("\n")[0]).toMatch(/^─+$/);
+    expect(list.split("\n").at(-1)).toMatch(/^─+$/);
+    expect(list).not.toContain("│");
 
     overlay.handleInput("\r");
     const detail = output(overlay);
@@ -45,7 +49,9 @@ describe("/subagents overlay", () => {
     const overlay = new SubagentsOverlay({ theme, snapshots: () => roots, cancel, close: vi.fn(), requestRender: vi.fn() });
     overlay.handleInput("\r");
     overlay.handleInput("c");
-    expect(output(overlay)).toContain("[No]  Yes");
+    expect(output(overlay)).toContain("Cancel worker and its 1 descendant?");
+    expect(output(overlay)).toContain("→ No");
+    expect(output(overlay)).toContain("  Yes");
     overlay.handleInput("\r");
     expect(cancel).not.toHaveBeenCalled();
     expect(output(overlay)).toContain("c cancel subtree   esc back");
