@@ -6,7 +6,7 @@ import type {
 import type { CallerCatalog } from "../catalog/types.ts";
 import type { RunEnvironment, RunRequest, SubagentSnapshot } from "../subagent/types.ts";
 import type { SubagentToolService } from "../subagent/ports.ts";
-import { truncateForTool } from "../sessions.ts";
+import { truncateForTool } from "../text.ts";
 import { actionSchema } from "./schema.ts";
 import {
   renderCall as renderSubagentCall,

@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { copyMasterSessionDirectory, masterSessionIdFromFile } from "../src/lifecycle.ts";
-import { NativeSessionStore } from "../src/sessions.ts";
+import { copyMasterSessionDirectory, masterSessionIdFromFile } from "../src/sessions/master-copy.ts";
+import { NativeSessionStore } from "../src/sessions/native-store.ts";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))));

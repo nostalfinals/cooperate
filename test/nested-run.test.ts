@@ -3,7 +3,7 @@ import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
 import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions/ownership.ts";
 import { SubagentService } from "../src/subagent/service.ts";
 import { createSubagentTool } from "../src/tool/subagent-tool.ts";
 

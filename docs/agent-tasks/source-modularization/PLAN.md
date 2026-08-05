@@ -9,7 +9,7 @@
 
 - [x] Slice 1 — Separate subagent orchestration from the Tool adapter
 - [x] Slice 2 — Separate the catalog loading pipeline
-- [ ] Slice 3 — Separate Session persistence and master lifecycle operations
+- [x] Slice 3 — Separate Session persistence and master lifecycle operations
 - [ ] Slice 4 — Separate invocation policy from the Pi child runtime adapter
 - [ ] Slice 5 — Finish the package entry point and module layout
 
@@ -148,7 +148,7 @@ Configuration loading, Definition parsing, catalog-wide validation, and caller p
 
 ### Slice 3 — Separate Session persistence and master lifecycle operations
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
@@ -181,6 +181,21 @@ Ownership parsing, native Session persistence, master namespace copying, orphan 
 **Dependencies**
 
 - Slice 1.
+
+**Completed work**
+
+- Split ownership parsing, native Session storage, master namespace copying, orphan cleanup, and bounded text helpers into focused modules.
+- Updated service, extension, Tool, UI, and tests to use the new Session and text owners; removed `src/sessions.ts` and `src/lifecycle.ts`.
+
+**Validation**
+
+- `npm test -- test/sessions.test.ts test/branch-visibility.test.ts test/session-lifecycle.test.ts test/master-fork.test.ts test/orphan-gc.test.ts test/nested-run.test.ts` — 6 files, 17 tests passed.
+- `npm test` — 17 files, 77 tests passed.
+- `npm run typecheck` — passed.
+- `test ! -e src/sessions.ts && test ! -e src/lifecycle.ts` — passed.
+- `git diff --check` — passed.
+
+**Deviations:** None.
 
 ### Slice 4 — Separate invocation policy from the Pi child runtime adapter
 

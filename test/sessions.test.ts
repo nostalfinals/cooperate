@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "../src/sessions.ts";
+import { NativeSessionStore } from "../src/sessions/native-store.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions/ownership.ts";
+import { truncateForTool } from "../src/text.ts";
 
 const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));

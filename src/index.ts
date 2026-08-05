@@ -12,16 +12,13 @@ import { PiChildRuntimeFactory } from "./runtime.ts";
 import type { ChildRuntimeFactory } from "./subagent/ports.ts";
 import { isAbortedAgentEnd } from "./subagent/result.ts";
 import { SubagentService } from "./subagent/service.ts";
-import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
+import { NativeSessionStore } from "./sessions/native-store.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions/ownership.ts";
 import { createSubagentTool } from "./tool/subagent-tool.ts";
 import { renderCompletionMessage } from "./presentation.ts";
 import { SubagentsOverlay } from "./overlay.ts";
-import {
-  collectMasterSessionIds,
-  copyMasterSessionDirectory,
-  garbageCollectOrphanSessions,
-  masterSessionIdFromFile,
-} from "./lifecycle.ts";
+import { copyMasterSessionDirectory, masterSessionIdFromFile } from "./sessions/master-copy.ts";
+import { collectMasterSessionIds, garbageCollectOrphanSessions } from "./sessions/orphan-gc.ts";
 
 export interface CooperateExtensionOptions {
   agentDir?: string;

@@ -1,7 +1,8 @@
 import { createCallerCatalog } from "../catalog/caller-catalog.ts";
 import type { AgentDefinition, DefinitionCatalog } from "../catalog/types.ts";
 import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
-import { compactPreview, OWNERSHIP_ENTRY, ownedSessionIds, truncateForTool } from "../sessions.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../sessions/ownership.ts";
+import { compactPreview, truncateForTool } from "../text.ts";
 import type {
   ChildRun,
   ChildRuntimeFactory,
