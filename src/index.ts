@@ -46,6 +46,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
 
   return (pi: ExtensionAPI) => {
     let state: SessionCatalogState | undefined;
+    let sessionGeneration = 0;
     const continuation = createPiContinuationHost(pi);
     pi.registerMessageRenderer(COMPLETION_MESSAGE, renderCompletionMessage);
     pi.registerCommand("subagents", {
@@ -70,34 +71,44 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("session_start", async (event, ctx) => {
-      await state?.shutdown();
+      const generation = ++sessionGeneration;
+      const previousState = state;
       state = undefined;
 
-      const catalog = await loadCatalog({
-        agentDir,
-        availableTools: new Set([...pi.getAllTools().map((tool) => tool.name), "subagent"]),
-        modelRegistry: ctx.modelRegistry,
-      });
-      const masterSessionId = ctx.sessionManager.getSessionId();
+      // Snapshot session-bound values before yielding. Session replacement may
+      // invalidate ctx while catalog loading, namespace copying, or GC is pending.
+      const availableTools = new Set([...pi.getAllTools().map((tool) => tool.name), "subagent"]);
+      const modelRegistry = ctx.modelRegistry;
+      const sessionManager = ctx.sessionManager;
+      const masterSessionId = sessionManager.getSessionId();
+      const sessionDir = sessionManager.getSessionDir();
+      const cwd = ctx.cwd;
+
+      await previousState?.shutdown();
+      if (generation !== sessionGeneration) return;
+
+      const catalog = await loadCatalog({ agentDir, availableTools, modelRegistry });
+      if (generation !== sessionGeneration) return;
+
       if (event.reason === "fork" && event.previousSessionFile) {
         await copyMasterSessionDirectory(
           agentDir,
           masterSessionIdFromFile(event.previousSessionFile),
           masterSessionId,
         );
+        if (generation !== sessionGeneration) return;
       }
       if (catalog.config.gcOrphanSessions) {
-        const existingMasterIds = await collectMasterSessionIds(
-          agentDir,
-          [ctx.sessionManager.getSessionDir()],
-        );
+        const existingMasterIds = await collectMasterSessionIds(agentDir, [sessionDir]);
+        if (generation !== sessionGeneration) return;
         existingMasterIds.add(masterSessionId);
         await garbageCollectOrphanSessions(agentDir, existingMasterIds);
+        if (generation !== sessionGeneration) return;
       }
       const store = new NativeSessionStore({
         agentDir,
         masterSessionId,
-        cwd: ctx.cwd,
+        cwd,
       });
       const service = new BlockingSubagentService({
         catalog,
@@ -108,7 +119,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         persistOwnership: async (sessionId) => {
           pi.appendEntry(OWNERSHIP_ENTRY, { sessionId });
         },
-        visibleSessionIds: () => ownedSessionIds(ctx.sessionManager.getBranch()),
+        visibleSessionIds: () => ownedSessionIds(sessionManager.getBranch()),
       });
       state = new SessionCatalogState(catalog, service);
       pi.registerTool(createSubagentTool(service, createCallerCatalog(catalog)));
@@ -132,6 +143,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("session_shutdown", async () => {
+      sessionGeneration++;
       const current = state;
       state = undefined;
       await current?.shutdown();
