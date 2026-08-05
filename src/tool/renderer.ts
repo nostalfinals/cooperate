@@ -62,7 +62,7 @@ function trimTrailingPadding(line: string): string {
   return trailing > 0 ? line.slice(0, line.length - trailing) : line;
 }
 
-function activityTitle(subagentId: string, activity: SubagentActivity, theme: Theme): string | undefined {
+export function renderActivityTitle(subagentId: string, activity: SubagentActivity, theme: Theme): string | undefined {
   const definition = toolDefinitionProvider?.(subagentId, activity.toolName) as ToolDefinition | undefined;
   if (!definition?.renderCall) return undefined;
   try {
@@ -125,19 +125,19 @@ export function renderResult(
     const snapshot = details?.snapshot;
     const asyncRun = details?.async === true || (context.args as { async?: boolean }).async === true;
     if (snapshot && !asyncRun) {
-      return renderSubagentTree(snapshot, theme, options.expanded, activityTitle);
+      return renderSubagentTree(snapshot, theme, options.expanded, renderActivityTitle);
     }
     return new Text("", 0, 0);
   }
 
   if (action === "wait") {
-    return renderLevelTree(details?.snapshots ?? [], theme, options.expanded, activityTitle);
+    return renderLevelTree(details?.snapshots ?? [], theme, options.expanded, renderActivityTitle);
   }
 
   if (action === "cancel") {
     const snapshot = details?.snapshot;
     if (!snapshot) return new Text("", 0, 0);
-    return renderLevelTree([snapshot], theme, options.expanded, activityTitle);
+    return renderLevelTree([snapshot], theme, options.expanded, renderActivityTitle);
   }
 
   if (action === "list-definitions") {

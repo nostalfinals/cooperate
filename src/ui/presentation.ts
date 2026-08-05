@@ -23,7 +23,7 @@ export function snapshotElapsed(snapshot: SubagentSnapshot): number {
     : snapshot.elapsedMs;
 }
 
-function stateMark(snapshot: SubagentSnapshot, theme: Theme): string {
+export function stateMark(snapshot: SubagentSnapshot, theme: Theme): string {
   switch (snapshot.state) {
     case "running": return theme.fg("accent", SPINNER[Math.floor(snapshotElapsed(snapshot) / SPINNER_INTERVAL_MS) % SPINNER.length]!);
     case "waiting": return theme.fg("warning", "◌");
@@ -81,7 +81,13 @@ export function fallbackActivity(activity: SubagentActivity, theme: Theme): stri
   return theme.fg("toolTitle", activity.toolName) + " " + theme.fg("muted", compactPreview(summary, 48));
 }
 
-function collectTreeLines(
+export interface TreeRow {
+  /** subagentId for selectable node rows, "" for activity rows. */
+  id: string;
+  line: string;
+}
+
+function collectTreeRows(
   snapshot: SubagentSnapshot,
   theme: Theme,
   expanded: boolean,
@@ -89,26 +95,27 @@ function collectTreeLines(
   branchCol = -1,
   parentBranchCol = -1,
   isLast = true,
-): string[] {
+): TreeRow[] {
   const isRoot = branchCol < 0;
-  const lines: string[] = [];
+  const rows: TreeRow[] = [];
   if (isRoot) {
-    lines.push(nodeLine(snapshot, theme, -1, true));
+    rows.push({ id: snapshot.subagentId, line: nodeLine(snapshot, theme, -1, true) });
   } else if (parentBranchCol >= 0) {
-    lines.push(
-      " ".repeat(parentBranchCol) + theme.fg("muted", "│") + " ".repeat(branchCol - parentBranchCol - 1)
+    rows.push({
+      id: snapshot.subagentId,
+      line: " ".repeat(parentBranchCol) + theme.fg("muted", "│") + " ".repeat(branchCol - parentBranchCol - 1)
         + theme.fg("muted", isLast ? "└─" : "├─") + " " + nodeBody(snapshot, theme),
-    );
+    });
   } else {
-    lines.push(nodeLine(snapshot, theme, branchCol, isLast));
+    rows.push({ id: snapshot.subagentId, line: nodeLine(snapshot, theme, branchCol, isLast) });
   }
   if (expanded && isActive(snapshot)) {
-    lines.push(activityLine(snapshot, theme, branchCol, isLast, activityTitle));
+    rows.push({ id: "", line: activityLine(snapshot, theme, branchCol, isLast, activityTitle) });
   }
   const childBranchCol = isRoot ? 2 : branchCol + 5;
   const childParentBranchCol = isRoot ? -1 : branchCol;
   snapshot.children.forEach((child, index) => {
-    lines.push(...collectTreeLines(
+    rows.push(...collectTreeRows(
       child,
       theme,
       expanded,
@@ -118,8 +125,10 @@ function collectTreeLines(
       index === snapshot.children.length - 1,
     ));
   });
-  return lines;
+  return rows;
 }
+
+export { collectTreeRows };
 
 function hintLine(theme: Theme, expanded: boolean): string {
   return theme.fg("muted", `(ctrl+o to ${expanded ? "hide" : "show"} activity)`);
@@ -138,7 +147,7 @@ class SubagentTreeComponent implements Component {
   render(width: number): string[] {
     const lines = [
       "",
-      ...collectTreeLines(this.snapshot, this.theme, this.expanded, this.activityTitle),
+      ...collectTreeRows(this.snapshot, this.theme, this.expanded, this.activityTitle).map((row) => row.line),
       "",
       hintLine(this.theme, this.expanded),
     ];

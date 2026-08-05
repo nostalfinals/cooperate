@@ -39,6 +39,9 @@ export interface SubagentRun {
   dispose(): Promise<void>;
   messagesSinceStart(): readonly unknown[];
   getToolDefinition?(toolName: string): ToolDefinition | undefined;
+  steer?(text: string): Promise<void>;
+  getSteeringMessages?(): readonly string[];
+  clearSteering?(): void;
 }
 
 export interface ChildRuntimeFactory {

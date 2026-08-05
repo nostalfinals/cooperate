@@ -35,6 +35,7 @@ function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"
       const native = {
         appendCustomEntry: vi.fn((customType: string, data: unknown) => entries.push({ type: "custom", customType, data })),
         getBranch: vi.fn(() => entries),
+        getTree: vi.fn(() => []),
       };
       const record = { sessionId, file: `/${sessionId}.jsonl`, native };
       records.set(sessionId, record);
@@ -96,6 +97,20 @@ describe("nested subagent runs", () => {
     expect(parentEntries[0]).toMatchObject({ customType: OWNERSHIP_ENTRY });
     h.releaseParent();
     await parentPending;
+  });
+
+  it("retains a nested subagent's session tree after both it and its parent finish", async () => {
+    const h = createHarness();
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+
+    await executeNested(h.invocations[0]!, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
+    const nestedId = h.service.snapshotRoots()[0]!.children[0]!.subagentId;
+    h.releaseParent();
+    await parentPending;
+
+    expect(h.service.getTree(nestedId)).toEqual([]);
+    expect((h.invocations[1]!.record.native as { getTree: () => unknown }).getTree).toHaveBeenCalledOnce();
   });
 
   it("allows every definition when the subagents allowlist is the '*' wildcard", async () => {

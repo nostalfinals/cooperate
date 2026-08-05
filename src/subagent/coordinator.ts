@@ -194,10 +194,25 @@ export class StructuredCoordinator {
   }
 
   snapshotRoots(): readonly SubagentSnapshot[] {
-    return Object.freeze([...this.rootChildren]
+    const active = [...this.rootChildren]
       .map((id) => this.nodes.get(id))
       .filter((node): node is NodeRecord => node !== undefined)
-      .map((node) => this.makeSnapshot(node)));
+      .map((node) => this.makeSnapshot(node));
+    const done = [...this.completed.values()]
+      .filter((snapshot) => snapshot.parentId === undefined)
+      .sort((left, right) => left.startedAt - right.startedAt);
+    return Object.freeze([...active, ...done]
+      .sort((left, right) => left.startedAt - right.startedAt));
+  }
+
+  /** Forget terminal snapshots; called when the master agent starts a new round. */
+  clearCompleted(): void {
+    this.completed.clear();
+    this.emit();
+  }
+
+  completedIds(): readonly string[] {
+    return [...this.completed.keys()];
   }
 
   directChildren(parentId?: string): readonly SubagentSnapshot[] {

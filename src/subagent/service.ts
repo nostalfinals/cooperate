@@ -5,6 +5,7 @@ import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
+import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
 import { extractFinalText } from "./result.ts";
@@ -56,11 +57,13 @@ export class SubagentService {
   private readonly active = new Map<string, ActiveExecution>();
   private readonly childServices = new Map<string, SubagentService>();
   private readonly runs = new Map<string, SubagentRun>();
+  private readonly records: Map<string, SessionRecord>;
   private messenger?: Messenger;
   private disposed = false;
 
-  constructor(options: SubagentServiceOptions) {
+  constructor(options: SubagentServiceOptions, records = new Map<string, SessionRecord>()) {
     this.options = options;
+    this.records = records;
     this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
     this.parentId = options.parentId;
     this.messenger = options.messenger;
@@ -149,6 +152,7 @@ export class SubagentService {
     });
     this.coordinator.attachAbort(subagentId, () => run.abort());
     this.runs.set(subagentId, run);
+    this.records.set(subagentId, record);
     const emitSnapshot = () => {
       const snapshot = this.coordinator.snapshot(subagentId);
       if (snapshot) environment.onSnapshot?.(snapshot);
@@ -251,6 +255,7 @@ export class SubagentService {
   async cancel(subagentId: string): Promise<SubagentSnapshot | undefined> {
     const [handle] = this.captureDirect([subagentId]);
     handle!.explicitCancel = true;
+    handle!.resolveNotificationSuppressed();
     this.coordinator.requestCancel(subagentId, "explicitly cancelled");
     await handle!.done;
     return this.coordinator.snapshotOrLast(subagentId);
@@ -271,12 +276,46 @@ export class SubagentService {
     return owner?.runs.get(subagentId)?.getToolDefinition?.(toolName);
   }
 
+  getTree(subagentId: string): readonly SessionTreeNode[] | undefined {
+    const native = this.records.get(subagentId)?.native;
+    if (!native || typeof native !== "object" || !("getTree" in native)) return undefined;
+    return (native as { getTree(): SessionTreeNode[] }).getTree();
+  }
+
+  async steer(subagentId: string, text: string): Promise<void> {
+    const owner = this.findRunOwner(subagentId);
+    await owner?.runs.get(subagentId)?.steer?.(text);
+  }
+
+  getSteeringMessages(subagentId: string): readonly string[] {
+    const owner = this.findRunOwner(subagentId);
+    return owner?.runs.get(subagentId)?.getSteeringMessages?.() ?? [];
+  }
+
+  async replaceSteering(subagentId: string, text: string): Promise<void> {
+    const owner = this.findRunOwner(subagentId);
+    const run = owner?.runs.get(subagentId);
+    if (!run) return;
+    run.clearSteering?.();
+    await run.steer?.(text);
+  }
+
+  clearCompleted(): void {
+    for (const id of this.coordinator.completedIds()) this.records.delete(id);
+    this.coordinator.clearCompleted();
+    for (const child of this.childServices.values()) child.clearCompleted();
+  }
+
   waitForDescendants(): Promise<void> {
     return this.coordinator.waitForDescendants(this.parentId);
   }
 
   snapshotRoots(): readonly SubagentSnapshot[] {
     return this.coordinator.snapshotRoots();
+  }
+
+  snapshotOf(subagentId: string): SubagentSnapshot | undefined {
+    return this.coordinator.snapshotOrLast(subagentId);
   }
 
   subscribe(listener: () => void): () => void {
@@ -418,6 +457,6 @@ export class SubagentService {
         native?.appendCustomEntry(OWNERSHIP_ENTRY, { sessionId });
       },
       visibleSessionIds: () => native ? ownedSessionIds(native.getBranch()) : [],
-    });
+    }, this.records);
   }
 }

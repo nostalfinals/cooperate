@@ -42,6 +42,12 @@ describe("StructuredCoordinator", () => {
     await coordinator.finish(child.subagentId, { state: "finished" });
     await waiting;
     await coordinator.finish(parent.subagentId, { state: "finished" });
+    // Completed roots stay visible to the /subagents overlay until the next round.
+    const roots = coordinator.snapshotRoots();
+    expect(roots).toHaveLength(1);
+    expect(roots[0]!.subagentId).toBe(parent.subagentId);
+    expect(roots[0]!.state).toBe("finished");
+    coordinator.clearCompleted();
     expect(coordinator.snapshotRoots()).toEqual([]);
   });
 

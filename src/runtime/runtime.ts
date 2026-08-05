@@ -30,6 +30,9 @@ interface SessionLike {
   setActiveToolsByName(toolNames: string[]): void;
   bindExtensions(bindings: { mode: "print"; abortHandler: () => void }): Promise<void>;
   getToolDefinition?(name: string): ToolDefinition | undefined;
+  steer?(text: string): Promise<void>;
+  getSteeringMessages?(): readonly string[];
+  clearQueue?(): { steering: string[]; followUp: string[] };
   prompt(task: string): Promise<void>;
   abort(): void;
   dispose(): void;
@@ -233,6 +236,9 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       },
       messagesSinceStart: () => session.messages.slice(startIndex),
       getToolDefinition: (name) => session.getToolDefinition?.(name),
+      steer: (text) => session.steer?.(text) ?? Promise.resolve(),
+      getSteeringMessages: () => session.getSteeringMessages?.() ?? [],
+      clearSteering: () => session.clearQueue?.(),
     };
   }
 }

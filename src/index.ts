@@ -88,14 +88,26 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
           return new SubagentsOverlay({
             theme,
             snapshots: () => service.snapshotRoots(),
+            snapshotOf: (subagentId) => service.snapshotOf(subagentId),
             cancel: (subagentId) => service.cancelFromUi(subagentId),
+            steer: (subagentId, text) => service.steer(subagentId, text),
+            replaceSteering: (subagentId, text) => service.replaceSteering(subagentId, text),
+            getSteeringMessages: (subagentId) => service.getSteeringMessages(subagentId),
+            getTree: (subagentId) => service.getTree(subagentId),
             close: () => done(undefined),
             requestRender: () => tui.requestRender(),
             onDispose: unsubscribe,
             startTimer: true,
+            terminalRows: tui.terminal.rows,
           });
         });
       },
+    });
+
+    pi.on("input", (event) => {
+      // Only a user prompt starts a new round; wake-ups from subagent completion
+      // messages must keep the finished subagents visible in /subagents.
+      if (event.source === "interactive") state?.service?.clearCompleted();
     });
 
     pi.on("session_start", async (event, ctx) => {
@@ -160,9 +172,41 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       };
     });
 
-    pi.on("agent_end", async (event) => {
-      if (isAbortedAgentEnd(event.messages)) await state?.service.cancelActive("main agent interrupted");
-      else await state?.service.waitForDescendants();
+    pi.on("agent_end", async (event, ctx) => {
+      const service = state?.service;
+      if (!service) return;
+      if (isAbortedAgentEnd(event.messages)) {
+        await service.cancelActive("main agent interrupted");
+        return;
+      }
+      // The loop is parked on this handler while descendants run. esc aborts
+      // the agent signal; racing the wait lets the interrupt release the loop
+      // so Pi returns to idle instead of staying stuck on "Working…".
+      const signal = ctx.signal;
+      if (signal?.aborted) {
+        await service.cancelActive("main agent interrupted");
+        return;
+      }
+      let interrupted = false;
+      const onAbort = () => { interrupted = true; };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        if (!interrupted) {
+          await Promise.race([
+            service.waitForDescendants(),
+            new Promise<void>((resolve) => {
+              if (interrupted) {
+                resolve();
+                return;
+              }
+              signal?.addEventListener("abort", () => resolve(), { once: true });
+            }),
+          ]);
+        }
+      } finally {
+        signal?.removeEventListener("abort", onAbort);
+      }
+      if (interrupted) await service.cancelActive("main agent interrupted");
     });
 
     pi.on("session_before_tree", async () => {
