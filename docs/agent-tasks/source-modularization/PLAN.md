@@ -11,7 +11,7 @@
 - [x] Slice 2 — Separate the catalog loading pipeline
 - [x] Slice 3 — Separate Session persistence and master lifecycle operations
 - [x] Slice 4 — Separate invocation policy from the Pi child runtime adapter
-- [ ] Slice 5 — Finish the package entry point and module layout
+- [x] Slice 5 — Finish the package entry point and module layout
 
 ## Current codebase state
 
@@ -248,7 +248,7 @@ Model/thinking selection is isolated from Pi SDK session construction, and the P
 
 ### Slice 5 — Finish the package entry point and module layout
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
@@ -285,6 +285,22 @@ The extension loads from a minimal entry point, all concrete implementations are
 - Slice 2.
 - Slice 3.
 - Slice 4.
+
+**Completed work**
+
+- Moved the composition root to `src/extension.ts`, reduced `src/index.ts` to the named factory/default entry, and moved UI modules under `src/ui/`.
+- Updated all owning imports and verified the final source layout, package contents, and offline Pi loading.
+
+**Validation**
+
+- `npm test` — 17 files, 77 tests passed.
+- `npm run typecheck` — passed.
+- `npm pack --dry-run` — passed; package contains the entry point and reorganized source.
+- `PI_OFFLINE=1 pi -e . --help` — passed.
+- `test "$(find src -maxdepth 1 -type f -printf '%f\\n' | sort | paste -sd, -)" = "continuation.ts,extension.ts,index.ts,prompt.ts,text.ts"` — passed.
+- `git diff --check` — passed.
+
+**Deviations:** None.
 
 ## Final verification
 

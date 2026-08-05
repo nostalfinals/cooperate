@@ -6,7 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text, type Component } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "../subagent/types.ts";
-import { renderSubagentTree } from "../presentation.ts";
+import { renderSubagentTree } from "../ui/presentation.ts";
 
 type ToolRenderContext = Parameters<NonNullable<ToolDefinition["renderResult"]>>[3];
 

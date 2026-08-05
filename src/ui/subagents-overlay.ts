@@ -1,8 +1,8 @@
 import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, matchesKey, SelectList, Text, type Component, type SelectItem } from "@earendil-works/pi-tui";
-import type { SubagentSnapshot } from "./subagent/types.ts";
+import type { SubagentSnapshot } from "../subagent/types.ts";
 import { formatElapsed, snapshotElapsed } from "./presentation.ts";
-import { compactPreview } from "./text.ts";
+import { compactPreview } from "../text.ts";
 
 interface OverlayOptions {
   theme: Theme;
