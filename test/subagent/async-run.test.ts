@@ -55,7 +55,7 @@ describe("asynchronous subagent run", () => {
   it("returns startup identity promptly and gates its exactly-once completion until the tool result is committed", async () => {
     const h = harness();
     const started = await h.service.run(
-      { agent: "worker", task: "work", async: true },
+      { agent: "worker", task: "work", prompt: "work", async: true },
       { cwd: "/project", creatorModel: {}, toolCallId: "call-1" },
     );
 
@@ -75,7 +75,7 @@ describe("asynchronous subagent run", () => {
     const failed = harness();
     vi.mocked(failed.run.prompt).mockRejectedValueOnce(new Error("provider failed"));
     await failed.service.run(
-      { agent: "worker", task: "fail", async: true },
+      { agent: "worker", task: "fail", prompt: "fail", async: true },
       { cwd: "/project", creatorModel: {}, toolCallId: "failed-call" },
     );
     failed.commitGate.resolve();
@@ -84,7 +84,7 @@ describe("asynchronous subagent run", () => {
 
     const cancelled = harness();
     await cancelled.service.run(
-      { agent: "worker", task: "cancel", async: true },
+      { agent: "worker", task: "cancel", prompt: "cancel", async: true },
       { cwd: "/project", creatorModel: {}, toolCallId: "cancelled-call" },
     );
     await expect(cancelled.service.shutdown()).resolves.toBeUndefined();

@@ -1,7 +1,9 @@
 import type { AgentDefinition } from "../catalog/definitions.ts";
 import type { CallerCatalog, ThinkingLevel } from "../catalog/types.ts";
 import type { Messenger } from "../subagent/messenger.ts";
+import type { SubagentActivity } from "../subagent/types.ts";
 import type { SessionRecord } from "../session/types.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type {
   RunEnvironment,
   RunRequest,
@@ -26,6 +28,7 @@ export interface SubagentInvocation {
   subagentTool?: unknown;
   onMessenger?(messenger: Messenger): void;
   onAgentEnd?(cause: TerminalCause): Promise<void>;
+  onActivity?(activity: SubagentActivity): void;
 }
 
 export interface SubagentRun {
@@ -35,6 +38,7 @@ export interface SubagentRun {
   abort(): void;
   dispose(): Promise<void>;
   messagesSinceStart(): readonly unknown[];
+  getToolDefinition?(toolName: string): ToolDefinition | undefined;
 }
 
 export interface ChildRuntimeFactory {

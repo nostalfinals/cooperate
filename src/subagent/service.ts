@@ -8,7 +8,7 @@ import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
 import { extractFinalText } from "./result.ts";
-import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot, TerminalCause } from "./types.ts";
+import type { RunEnvironment, RunRequest, RunResponse, SubagentActivity, SubagentSnapshot, TerminalCause } from "./types.ts";
 
 export interface SubagentServiceOptions {
   catalog: DefinitionCatalog;
@@ -43,7 +43,6 @@ interface ActiveExecution {
   resolveNotificationSuppressed(): void;
   done: Promise<void>;
 }
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -56,6 +55,7 @@ export class SubagentService {
   private readonly parentId?: string;
   private readonly active = new Map<string, ActiveExecution>();
   private readonly childServices = new Map<string, SubagentService>();
+  private readonly runs = new Map<string, SubagentRun>();
   private messenger?: Messenger;
   private disposed = false;
 
@@ -80,6 +80,7 @@ export class SubagentService {
     const definition = this.definitions.get(request.agent);
     if (!definition) throw new Error(`Definition '${request.agent}' is not available to this caller`);
     if (request.task.trim().length === 0) throw new Error("task must be nonempty");
+    if (request.prompt.trim().length === 0) throw new Error("prompt must be nonempty");
     if (request.async && !this.messenger) {
       throw new Error("asynchronous subagent startup requires a bound messenger");
     }
@@ -132,6 +133,7 @@ export class SubagentService {
           this.coordinator.ownLoopEnded(subagentId, terminal);
           await this.coordinator.waitForDescendants(subagentId);
         },
+        onActivity: (activity) => this.coordinator.setActivity(subagentId, activity),
       });
     } catch (error) {
       this.childServices.delete(subagentId);
@@ -146,18 +148,22 @@ export class SubagentService {
       thinking: run.thinking ?? definition.thinking ?? "default",
     });
     this.coordinator.attachAbort(subagentId, () => run.abort());
+    this.runs.set(subagentId, run);
     const emitSnapshot = () => {
       const snapshot = this.coordinator.snapshot(subagentId);
       if (snapshot) environment.onSnapshot?.(snapshot);
     };
     const unsubscribe = environment.onSnapshot ? this.coordinator.subscribe(emitSnapshot) : undefined;
     emitSnapshot();
-    const outcomePromise = this.executeRun(subagentId, record, request.task, run, environment.signal)
+    const outcomePromise = this.executeRun(subagentId, record, request.prompt, run, environment.signal)
       .then((outcome) => {
         environment.onSnapshot?.(outcome.snapshot);
         return outcome;
       })
-      .finally(() => unsubscribe?.());
+      .finally(() => {
+        this.runs.delete(subagentId);
+        unsubscribe?.();
+      });
     let resolveNotificationSuppressed!: () => void;
     const notificationSuppressed = new Promise<void>((resolve) => { resolveNotificationSuppressed = resolve; });
     const handle: ActiveExecution = {
@@ -225,18 +231,44 @@ export class SubagentService {
     }));
   }
 
-  async wait(subagentIds: readonly string[]): Promise<void> {
+  async wait(
+    subagentIds: readonly string[],
+    onSnapshot?: (snapshots: readonly SubagentSnapshot[]) => void,
+  ): Promise<void> {
     if (subagentIds.length === 0) throw new Error("subagentIds must be nonempty");
     if (new Set(subagentIds).size !== subagentIds.length) throw new Error("subagentIds must be unique");
     const handles = this.captureDirect(subagentIds);
-    await Promise.all(handles.map((handle) => handle.done));
+    const emit = () => onSnapshot?.(this.snapshotsFor(subagentIds));
+    const unsubscribe = onSnapshot ? this.coordinator.subscribe(emit) : undefined;
+    emit();
+    try {
+      await Promise.all(handles.map((handle) => handle.done));
+    } finally {
+      unsubscribe?.();
+    }
   }
 
-  async cancel(subagentId: string): Promise<void> {
+  async cancel(subagentId: string): Promise<SubagentSnapshot | undefined> {
     const [handle] = this.captureDirect([subagentId]);
     handle!.explicitCancel = true;
     this.coordinator.requestCancel(subagentId, "explicitly cancelled");
     await handle!.done;
+    return this.coordinator.snapshotOrLast(subagentId);
+  }
+
+  snapshotsFor(ids: readonly string[]): readonly SubagentSnapshot[] {
+    return ids
+      .map((id) => this.coordinator.snapshotOrLast(id))
+      .filter((snapshot): snapshot is SubagentSnapshot => snapshot !== undefined);
+  }
+
+  snapshotOrLast(subagentId: string): SubagentSnapshot | undefined {
+    return this.coordinator.snapshotOrLast(subagentId);
+  }
+
+  getToolDefinition(subagentId: string, toolName: string): unknown {
+    const owner = this.findRunOwner(subagentId);
+    return owner?.runs.get(subagentId)?.getToolDefinition?.(toolName);
   }
 
   waitForDescendants(): Promise<void> {
@@ -283,6 +315,15 @@ export class SubagentService {
     if (this.active.has(subagentId)) return this;
     for (const child of this.childServices.values()) {
       const owner = child.findOwner(subagentId);
+      if (owner) return owner;
+    }
+    return undefined;
+  }
+
+  private findRunOwner(subagentId: string): SubagentService | undefined {
+    if (this.runs.has(subagentId)) return this;
+    for (const child of this.childServices.values()) {
+      const owner = child.findRunOwner(subagentId);
       if (owner) return owner;
     }
     return undefined;

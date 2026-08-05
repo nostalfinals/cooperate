@@ -4,11 +4,15 @@ import type {
   ToolDefinition,
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
-import type { SubagentSnapshot } from "../subagent/types.ts";
-import { renderSubagentTree } from "../ui/presentation.ts";
+import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import type { SubagentActivity, SubagentSnapshot } from "../subagent/types.ts";
+import {
+  renderLevelTree,
+  renderSubagentTree,
+  type ActivityTitleRenderer,
+} from "../ui/presentation.ts";
 
-type ToolRenderContext = Parameters<NonNullable<ToolDefinition["renderResult"]>>[3];
+type ToolRenderContextArg = Parameters<NonNullable<ToolDefinition["renderResult"]>>[3];
 
 export interface SubagentToolDetails {
   action: string;
@@ -17,59 +21,146 @@ export interface SubagentToolDetails {
   sessionId?: string;
   count?: number;
   snapshot?: SubagentSnapshot;
+  snapshots?: readonly SubagentSnapshot[];
+}
+
+type ToolDefinitionProvider = (subagentId: string, toolName: string) => unknown;
+
+let toolDefinitionProvider: ToolDefinitionProvider | undefined;
+
+export function setToolDefinitionProvider(provider: ToolDefinitionProvider | undefined): void {
+  toolDefinitionProvider = provider;
+}
+
+const ACTIVITY_MAX_WIDTH = 60;
+const ACTIVITY_RENDER_WIDTH = 1000;
+
+const ANSI_SEQUENCE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?)/g;
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_SEQUENCE, "");
+}
+
+const FAKE_RENDER_CONTEXT = {
+  args: {},
+  toolCallId: "activity",
+  invalidate: () => {},
+  lastComponent: undefined,
+  state: {},
+  cwd: "",
+  executionStarted: true,
+  argsComplete: true,
+  isPartial: false,
+  expanded: false,
+  showImages: false,
+  isError: false,
+};
+
+function trimTrailingPadding(line: string): string {
+  const visible = stripAnsi(line);
+  const trailing = visible.length - visible.trimEnd().length;
+  return trailing > 0 ? line.slice(0, line.length - trailing) : line;
+}
+
+function activityTitle(subagentId: string, activity: SubagentActivity, theme: Theme): string | undefined {
+  const definition = toolDefinitionProvider?.(subagentId, activity.toolName) as ToolDefinition | undefined;
+  if (!definition?.renderCall) return undefined;
+  try {
+    const component = definition.renderCall(activity.input, theme, {
+      ...FAKE_RENDER_CONTEXT,
+      args: activity.input,
+    });
+    const lines = component.render(ACTIVITY_RENDER_WIDTH);
+    const title = lines.find((line) => stripAnsi(line).trim().length > 0);
+    if (title === undefined) return undefined;
+    const normalized = title.replace(/^(?:\x1b\[[0-9;]*m)*\$ /, `${theme.fg("toolTitle", activity.toolName)} `);
+    return truncateToWidth(trimTrailingPadding(normalized), ACTIVITY_MAX_WIDTH, "…");
+  } catch {
+    return undefined;
+  }
 }
 
 export function renderCall(args: unknown, theme: Theme): Text {
   const action = (args as { action: string }).action;
-  let header = theme.fg("toolTitle", theme.bold(`subagent ${action}`));
-  if (action === "run") {
-    const run = args as { agent: string; async?: boolean };
-    header = theme.fg("toolTitle", theme.bold("subagent run ")) + theme.fg("accent", run.agent);
-    if (run.async) header += theme.fg("muted", " (async)");
-  } else if (action === "wait") {
-    const ids = (args as { subagentIds: string[] }).subagentIds;
-    header = theme.fg("toolTitle", theme.bold("subagent wait ")) + theme.fg("accent", ids.join(", "));
-  } else if (action === "cancel") {
-    const id = (args as { subagentId: string }).subagentId;
-    header = theme.fg("toolTitle", theme.bold("subagent cancel ")) + theme.fg("accent", id);
+  const header = theme.fg("toolTitle", theme.bold("subagent")) + " ";
+  switch (action) {
+    case "run": {
+      const run = args as { agent: string; async?: boolean };
+      let line = header + theme.fg("accent", `run ${run.agent}`);
+      if (run.async) line += theme.fg("muted", " (async)");
+      return new Text(line, 0, 0);
+    }
+    case "wait":
+    case "cancel":
+    case "list-definitions":
+    case "list-subagents":
+    case "list-sessions":
+      return new Text(header + theme.fg("accent", action), 0, 0);
+    default:
+      return new Text(header + theme.fg("accent", action), 0, 0);
   }
-  return new Text(header, 0, 0);
+}
+
+function errorText(result: AgentToolResult<unknown>): string {
+  return result.content
+    .filter((item): item is { type: "text"; text: string } => item.type === "text")
+    .map((item) => item.text)
+    .join("\n");
 }
 
 export function renderResult(
   result: AgentToolResult<unknown>,
   options: ToolRenderResultOptions,
   theme: Theme,
-  context: ToolRenderContext,
+  context: ToolRenderContextArg,
 ): Component {
   const details = result.details as SubagentToolDetails | undefined;
-  const renderState = context.state as { snapshot?: SubagentSnapshot } | undefined;
-  if (details?.snapshot && renderState) renderState.snapshot = details.snapshot;
-  const snapshot = details?.snapshot ?? renderState?.snapshot;
   const action = details?.action ?? (context.args as { action?: string }).action;
-  const text = result.content
-    .filter((item): item is { type: "text"; text: string } => item.type === "text")
-    .map((item) => item.text)
-    .join("\n");
-  if (action === "run" && snapshot && !details?.async && !(context.args as { async?: boolean }).async) {
-    return renderSubagentTree(snapshot, theme, options.expanded, text);
+
+  if (action === "run") {
+    if (context.isError) {
+      const text = errorText(result);
+      return new Text("\n" + theme.fg("muted", text), 0, 0);
+    }
+    const snapshot = details?.snapshot;
+    const asyncRun = details?.async === true || (context.args as { async?: boolean }).async === true;
+    if (snapshot && !asyncRun) {
+      return renderSubagentTree(snapshot, theme, options.expanded, activityTitle);
+    }
+    return new Text("", 0, 0);
   }
-  if (options.expanded) return new Text(text, 0, 0);
-  if (details?.action === "run" && details.async && details.subagentId) {
-    return new Text(theme.fg("success", `started ${details.subagentId}`), 0, 0);
+
+  if (action === "wait") {
+    return renderLevelTree(details?.snapshots ?? [], theme, options.expanded, activityTitle);
   }
-  if (details?.action === "list-subagents") {
-    const count = details.count ?? 0;
-    return new Text(theme.fg("muted", `${count} active subagent${count === 1 ? "" : "s"}`), 0, 0);
+
+  if (action === "cancel") {
+    const snapshot = details?.snapshot;
+    if (!snapshot) return new Text("", 0, 0);
+    return renderLevelTree([snapshot], theme, options.expanded, activityTitle);
   }
-  if (details?.action === "list-sessions") {
-    const count = details.count ?? 0;
-    return new Text(theme.fg("muted", `${count} session${count === 1 ? "" : "s"}`), 0, 0);
+
+  if (action === "list-definitions") {
+    const count = details?.count ?? 0;
+    const text = count === 0
+      ? "No subagent is defined yet"
+      : `${count} definition${count === 1 ? "" : "s"}`;
+    return new Text("\n" + theme.fg("muted", text), 0, 0);
   }
-  if (details?.action === "list-definitions") {
-    const count = details.count ?? 0;
-    return new Text(theme.fg("muted", `${count} definition${count === 1 ? "" : "s"}`), 0, 0);
+  if (action === "list-subagents") {
+    const count = details?.count ?? 0;
+    const text = count === 0
+      ? "No subagent is active yet"
+      : `${count} active subagent${count === 1 ? "" : "s"}`;
+    return new Text("\n" + theme.fg("muted", text), 0, 0);
   }
-  if (action === "wait" || action === "cancel") return new Text("", 0, 0);
-  return new Text(text, 0, 0);
+  if (action === "list-sessions") {
+    const count = details?.count ?? 0;
+    const text = count === 0
+      ? "No session yet"
+      : `${count} session${count === 1 ? "" : "s"}`;
+    return new Text("\n" + theme.fg("muted", text), 0, 0);
+  }
+
+  return new Text("", 0, 0);
 }

@@ -29,6 +29,7 @@ interface SessionLike {
   getActiveToolNames(): string[];
   setActiveToolsByName(toolNames: string[]): void;
   bindExtensions(bindings: { mode: "print"; abortHandler: () => void }): Promise<void>;
+  getToolDefinition?(name: string): ToolDefinition | undefined;
   prompt(task: string): Promise<void>;
   abort(): void;
   dispose(): void;
@@ -152,6 +153,9 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
         if (systemPromptMode === "override") {
           pi.on("before_agent_start", () => ({ systemPrompt: invocation.definition.body }));
         }
+        pi.on("tool_call", (event) => {
+          invocation.onActivity?.({ toolName: event.toolName, input: event.input as Record<string, unknown> });
+        });
         pi.on("agent_end", async (event) => {
           if (!invocation.onAgentEnd) return;
           const failure = terminalFailure(event.messages, 0);
@@ -228,6 +232,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
         await created.dispose();
       },
       messagesSinceStart: () => session.messages.slice(startIndex),
+      getToolDefinition: (name) => session.getToolDefinition?.(name),
     };
   }
 }

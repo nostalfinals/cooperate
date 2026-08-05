@@ -84,11 +84,11 @@ async function executeNested(invocation: SubagentInvocation, params: Record<stri
 describe("nested subagent runs", () => {
   it("installs a scoped tool that can create only a direct permitted child and persists ownership in the parent session", async () => {
     const h = createHarness();
-    const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
 
-    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task" });
+    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
     expect(nestedResult.content).toEqual([{ type: "text", text: "leaf result" }]);
     expect(h.invocations[1]).toMatchObject({ definition: { name: "leaf" }, task: "leaf task" });
     const parentEntries = h.ownershipBySession.get(parentInvocation.record.sessionId)!;
@@ -100,12 +100,12 @@ describe("nested subagent runs", () => {
 
   it("allows every definition when the subagents allowlist is the '*' wildcard", async () => {
     const h = createHarness(3, ["*"]);
-    const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
     expect(parentInvocation.callerCatalog.definitions.map((item) => item.name)).toEqual(["parent", "leaf", "forbidden"]);
 
-    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "forbidden task" });
+    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "forbidden task", prompt: "forbidden task" });
     expect(nestedResult.content).toEqual([{ type: "text", text: "forbidden result" }]);
     expect(h.invocations[1]).toMatchObject({ definition: { name: "forbidden" }, task: "forbidden task" });
     h.releaseParent();
@@ -114,13 +114,13 @@ describe("nested subagent runs", () => {
 
   it("rejects an unpermitted definition and over-depth run before session creation or locking", async () => {
     const h = createHarness(2);
-    const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
     const createsBefore = vi.mocked(h.store.create).mock.calls.length;
 
-    await expect(executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "no" })).rejects.toThrow();
-    await expect(executeNested(parentInvocation, { action: "run", agent: "leaf", task: "too deep" })).rejects.toThrow();
+    await expect(executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "no", prompt: "no" })).rejects.toThrow();
+    await expect(executeNested(parentInvocation, { action: "run", agent: "leaf", task: "too deep", prompt: "too deep" })).rejects.toThrow();
     expect(h.store.create).toHaveBeenCalledTimes(createsBefore);
     expect(h.coordinator.isSessionLocked("session-2")).toBe(false);
     h.releaseParent();

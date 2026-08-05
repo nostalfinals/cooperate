@@ -5,7 +5,8 @@ export function actionSchema(): TSchema {
     Type.Object({
       action: Type.Literal("run"),
       agent: Type.String({ minLength: 1, description: "definition name available to this caller" }),
-      task: Type.String({ minLength: 1 }),
+      task: Type.String({ minLength: 1, description: "short human-readable goal sentence shown in the UI (e.g. 'Implement the gift card redemption API')" }),
+      prompt: Type.String({ minLength: 1, description: "full prompt sent to the subagent" }),
       sessionId: Type.Optional(Type.String()),
       async: Type.Optional(Type.Boolean()),
     }, { additionalProperties: false }),

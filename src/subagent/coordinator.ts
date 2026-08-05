@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type {
   StartNode,
   StartedNode,
+  SubagentActivity,
   SubagentSnapshot,
   TerminalCause,
   TerminalSubagentState,
@@ -24,6 +25,7 @@ interface NodeRecord {
   startedAt: number;
   children: Set<string>;
   completedChildren: SubagentSnapshot[];
+  activity?: SubagentActivity;
   ownCause?: TerminalCause;
   abort?: () => void;
   abortInvoked: boolean;
@@ -46,6 +48,7 @@ export class StructuredCoordinator {
   private readonly locks = new Map<string, string>();
   private readonly rootChildren = new Set<string>();
   private readonly listeners = new Set<() => void>();
+  private readonly completed = new Map<string, SubagentSnapshot>();
 
   constructor(maxDepth: number, options: CoordinatorOptions = {}) {
     this.maxDepth = maxDepth;
@@ -103,6 +106,13 @@ export class StructuredCoordinator {
     this.emit();
   }
 
+  setActivity(subagentId: string, activity: SubagentActivity): void {
+    const node = this.nodes.get(subagentId);
+    if (!node) return;
+    node.activity = activity;
+    this.emit();
+  }
+
   ownLoopEnded(subagentId: string, cause: TerminalCause): void {
     const node = this.nodes.get(subagentId);
     if (!node || node.ownCause) return;
@@ -124,6 +134,7 @@ export class StructuredCoordinator {
 
     const terminal = current.ownCause ?? cause;
     const snapshot = this.makeSnapshot(current, terminal.state, terminal.reason);
+    this.completed.set(subagentId, snapshot);
     this.nodes.delete(subagentId);
     this.locks.delete(current.sessionId);
     const parent = current.parentId ? this.nodes.get(current.parentId) : undefined;
@@ -172,6 +183,10 @@ export class StructuredCoordinator {
   get(subagentId: string): SubagentSnapshot | undefined {
     const node = this.nodes.get(subagentId);
     return node ? this.makeSnapshot(node) : undefined;
+  }
+
+  snapshotOrLast(subagentId: string): SubagentSnapshot | undefined {
+    return this.get(subagentId) ?? this.completed.get(subagentId);
   }
 
   snapshot(subagentId: string): SubagentSnapshot | undefined {
@@ -229,6 +244,7 @@ export class StructuredCoordinator {
       elapsedMs: Math.max(0, this.now() - node.startedAt),
       state,
       reason: reason ?? (forcedState ? node.ownCause?.reason : undefined),
+      activity: node.activity,
       children,
     });
   }

@@ -81,7 +81,7 @@ describe("blocking subagent run", () => {
       visibleSessionIds: () => h.ownership,
     });
 
-    const result = await service.run({ agent: "worker", task: "Do exactly this" }, { cwd: "/project", creatorModel: { id: "creator" } });
+    const result = await service.run({ agent: "worker", task: "Do exactly this", prompt: "Do exactly this" }, { cwd: "/project", creatorModel: { id: "creator" } });
 
     expect(order).toEqual(["create", "own", "start"]);
     expect(h.invocations[0]).toMatchObject({ definition: { name: "worker" }, record: { sessionId: "session-1" }, task: "Do exactly this" });
@@ -94,7 +94,7 @@ describe("blocking subagent run", () => {
     h.records.set("session-old", { sessionId: "session-old", file: "/sessions/old.jsonl" });
     h.ownership.push("session-old");
 
-    await h.service.run({ agent: "reviewer", task: "Review", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "reviewer", task: "Review", prompt: "Review", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} });
 
     expect(h.store.create).not.toHaveBeenCalled();
     expect(h.invocations[0].definition.name).toBe("reviewer");
@@ -106,14 +106,14 @@ describe("blocking subagent run", () => {
     h.records.set("session-old", { sessionId: "session-old", file: "/sessions/old.jsonl" });
     h.ownership.push("session-old");
 
-    const pending = h.service.run({ agent: "worker", task: "Fail", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} });
-    await expect(h.service.run({ agent: "worker", task: "Again", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
+    const pending = h.service.run({ agent: "worker", task: "Fail", prompt: "Fail", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} });
+    await expect(h.service.run({ agent: "worker", task: "Again", prompt: "Again", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
     await expect(pending).rejects.toThrow();
     expect(h.run.dispose).toHaveBeenCalledOnce();
 
     h.run.prompt = vi.fn(async () => undefined);
-    await expect(h.service.run({ agent: "worker", task: "Retry", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} })).resolves.toBeDefined();
-    await expect(h.service.run({ agent: "worker", task: "No", sessionId: "hidden" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
+    await expect(h.service.run({ agent: "worker", task: "Retry", prompt: "Retry", sessionId: "session-old" }, { cwd: "/project", creatorModel: {} })).resolves.toBeDefined();
+    await expect(h.service.run({ agent: "worker", task: "No", prompt: "No", sessionId: "hidden" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
   });
 
   it("aborts the child from the tool signal and always disposes it", async () => {
@@ -123,7 +123,7 @@ describe("blocking subagent run", () => {
       controller.signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true });
     }));
 
-    const pending = h.service.run({ agent: "worker", task: "Long" }, { cwd: "/project", creatorModel: {}, signal: controller.signal });
+    const pending = h.service.run({ agent: "worker", task: "Long", prompt: "Long" }, { cwd: "/project", creatorModel: {}, signal: controller.signal });
     await vi.waitFor(() => expect(h.run.prompt).toHaveBeenCalled());
     controller.abort();
 

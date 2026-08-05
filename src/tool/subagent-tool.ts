@@ -85,12 +85,25 @@ export function createSubagentTool(
         return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
       }
       if (action === "wait") {
-        await service.wait((params as unknown as { subagentIds: string[] }).subagentIds);
-        return textResult("wait complete", { action });
+        const ids = (params as unknown as { subagentIds: string[] }).subagentIds;
+        let latest: readonly SubagentSnapshot[] = [];
+        await service.wait(ids, (snapshots) => {
+          latest = snapshots;
+          onUpdate?.({
+            content: [],
+            details: { action: "wait", snapshots },
+          });
+        });
+        return textResult("wait complete", { action: "wait", snapshots: latest });
       }
       if (action === "cancel") {
-        await service.cancel((params as unknown as { subagentId: string }).subagentId);
-        return emptyResult({ action });
+        const subagentId = (params as unknown as { subagentId: string }).subagentId;
+        onUpdate?.({
+          content: [],
+          details: { action: "cancel", snapshot: service.snapshotOrLast(subagentId) },
+        });
+        const snapshot = await service.cancel(subagentId);
+        return emptyResult({ action: "cancel", snapshot });
       }
       throw new Error(`Unknown subagent action '${action}'`);
     },

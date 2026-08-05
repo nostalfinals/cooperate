@@ -23,11 +23,16 @@ const { loadThemeFromPath, setThemeInstance } = await import(
 const { ToolExecutionComponent } = await import(
   pathToFileURL(`${GLOBAL_PI}/dist/modes/interactive/components/tool-execution.js`).href
 );
-const { renderCall, renderResult } = await import("../src/tool/renderer.ts");
+const { createAllToolDefinitions } = await import(
+  pathToFileURL(`${GLOBAL_PI}/dist/core/tools/index.js`).href
+);
+const { renderCall, renderResult, setToolDefinitionProvider } = await import("../src/tool/renderer.ts");
 
 const theme = loadThemeFromPath(THEME_PATH, "truecolor");
 // The Box shell uses the module-level theme proxy; point it at catppuccin.
 setThemeInstance(theme);
+const builtinToolDefs = createAllToolDefinitions("/home/nostalfinals/Projects/cooperate");
+setToolDefinitionProvider((_subagentId, toolName) => builtinToolDefs[toolName]);
 
 // ---------------------------------------------------------------------------
 // ui-shell tool-indicator patch logic (copied from ~/.pi/agent/extensions/ui-shell)
@@ -143,6 +148,7 @@ const runningTree = {
       startedAt: Date.now() - 4_300,
       elapsedMs: 4_300,
       state: "running",
+      activity: { toolName: "bash", input: { command: "./gradlew :checkout:test" } },
       children: [
         {
           subagentId: "f0c8d2aa",
@@ -280,77 +286,129 @@ function runScenario(scenario: Scenario) {
 const scenarios: Scenario[] = [
   {
     title: "1. run 执行中（折叠）",
-    args: { action: "run", agent: "general", task: runningTree.task },
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow..." },
     result: { content: [], details: { action: "run", async: false, subagentId: "3f9a2c1d", sessionId: S1, snapshot: runningTree } },
     partial: true,
   },
   {
     title: "2. run 执行中（展开）",
-    args: { action: "run", agent: "general", task: runningTree.task },
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow..." },
     result: { content: [], details: { action: "run", async: false, subagentId: "3f9a2c1d", sessionId: S1, snapshot: runningTree } },
     partial: true,
     expanded: true,
   },
   {
     title: "3. run 完成（折叠）",
-    args: { action: "run", agent: "general", task: runningTree.task },
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow..." },
     result: { content: [{ type: "text", text: runResultText }], details: { action: "run", async: false, subagentId: "3f9a2c1d", sessionId: S1, snapshot: finishedTree } },
   },
   {
-    title: "4. run 完成（展开，含 result 全文）",
-    args: { action: "run", agent: "general", task: runningTree.task },
+    title: "4. run 完成（展开，不再显示 result 全文）",
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow..." },
     result: { content: [{ type: "text", text: runResultText }], details: { action: "run", async: false, subagentId: "3f9a2c1d", sessionId: S1, snapshot: finishedTree } },
     expanded: true,
   },
   {
-    title: "5. run async 完成",
-    args: { action: "run", agent: "general", task: runningTree.task, async: true },
+    title: "5. run async 成功（不显示 started）",
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow...", async: true },
     result: { content: [], details: { action: "run", async: true, subagentId: "3f9a2c1d", sessionId: S1, snapshot: finishedTree } },
   },
   {
-    title: "6. list-definitions（2 个）",
+    title: "6. run async 失败",
+    args: { action: "run", agent: "general", task: runningTree.task, prompt: "Refactor the checkout flow...", async: true },
+    result: {
+      content: [{ type: "text", text: "Session 01JX9k2f4m8hK2aQw7vB3cDe is locked" }],
+      details: { action: "run", async: true },
+      isError: true,
+    },
+    error: true,
+  },
+  {
+    title: "7. list-definitions（2 个）",
     args: { action: "list-definitions" },
     result: { content: [{ type: "text", text: discoveryText }], details: { action: "list-definitions", count: 2 } },
   },
   {
-    title: "7. list-definitions（空，展开）",
+    title: "8. list-definitions（空，展开也不变）",
     args: { action: "list-definitions" },
     result: { content: [{ type: "text", text: "No subagent is defined yet" }], details: { action: "list-definitions", count: 0 } },
     expanded: true,
   },
   {
-    title: "8. list-subagents（2 条）",
+    title: "9. list-subagents（2 条）",
     args: { action: "list-subagents" },
     result: { content: [{ type: "text", text: subagentsJson }], details: { action: "list-subagents", count: 2 } },
   },
   {
-    title: "9. list-subagents（空 → []）",
+    title: "10. list-subagents（空）",
     args: { action: "list-subagents" },
     result: { content: [{ type: "text", text: "[]" }], details: { action: "list-subagents", count: 0 } },
   },
   {
-    title: "10. list-sessions（2 条）",
+    title: "11. list-sessions（2 条）",
     args: { action: "list-sessions" },
     result: { content: [{ type: "text", text: sessionsJson }], details: { action: "list-sessions", count: 2 } },
   },
   {
-    title: "11. list-sessions（空 → []）",
+    title: "12. list-sessions（空）",
     args: { action: "list-sessions" },
     result: { content: [{ type: "text", text: "[]" }], details: { action: "list-sessions", count: 0 } },
   },
   {
-    title: "12. wait 执行中",
-    args: { action: "wait", subagentIds: ["3f9a2c1d", "a7b3e901"] },
+    title: "13. wait 执行中（折叠）",
+    args: { action: "wait", subagentIds: ["a7b3e901", "b2d4f810"] },
+    result: {
+      content: [],
+      details: {
+        action: "wait",
+        snapshots: [
+          { ...runningTree.children[0], elapsedMs: 4_300 },
+          { ...runningTree.children[1], elapsedMs: 8_900 },
+        ],
+      },
+    },
+    partial: true,
   },
   {
-    title: "13. wait 完成",
-    args: { action: "wait", subagentIds: ["3f9a2c1d", "a7b3e901"] },
-    result: { content: [{ type: "text", text: "wait complete" }], details: { action: "wait" } },
+    title: "14. wait 执行中（展开）",
+    args: { action: "wait", subagentIds: ["a7b3e901", "b2d4f810"] },
+    result: {
+      content: [],
+      details: {
+        action: "wait",
+        snapshots: [
+          { ...runningTree.children[0], elapsedMs: 4_300 },
+          { ...runningTree.children[1], elapsedMs: 8_900 },
+        ],
+      },
+    },
+    partial: true,
+    expanded: true,
   },
   {
-    title: "14. cancel 完成",
-    args: { action: "cancel", subagentId: "3f9a2c1d" },
-    result: { content: [], details: { action: "cancel" } },
+    title: "15. wait 完成（折叠）",
+    args: { action: "wait", subagentIds: ["a7b3e901", "b2d4f810"] },
+    result: {
+      content: [{ type: "text", text: "wait complete" }],
+      details: {
+        action: "wait",
+        snapshots: [
+          { ...finishedTree.children[0], elapsedMs: 11_200 },
+          { ...finishedTree.children[1], elapsedMs: 8_900 },
+        ],
+      },
+    },
+  },
+  {
+    title: "16. cancel 完成",
+    args: { action: "cancel", subagentId: "a7b3e901" },
+    result: {
+      content: [],
+      details: {
+        action: "cancel",
+        snapshot: { ...finishedTree.children[0], state: "cancelled", reason: "explicitly cancelled", elapsedMs: 4_300 },
+      },
+    },
   },
 ];
 

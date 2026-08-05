@@ -56,8 +56,8 @@ function harness() {
 describe("direct child management actions", () => {
   it("wait captures all active direct children, succeeds across terminal outcomes, and rejects stale or duplicate IDs", async () => {
     const h = harness();
-    const one = await h.service.run({ agent: "worker", task: "one", async: true }, { cwd: "/", creatorModel: {} });
-    const two = await h.service.run({ agent: "worker", task: "two", async: true }, { cwd: "/", creatorModel: {} });
+    const one = await h.service.run({ agent: "worker", task: "one", prompt: "one", async: true }, { cwd: "/", creatorModel: {} });
+    const two = await h.service.run({ agent: "worker", task: "two", prompt: "two", async: true }, { cwd: "/", creatorModel: {} });
     const waiting = h.service.wait([one.subagentId!, two.subagentId!]);
     let settled = false;
     void waiting.then(() => { settled = true; });
@@ -72,7 +72,7 @@ describe("direct child management actions", () => {
 
   it("cancels one direct subtree, waits for disposal, and emits only the target's async cancellation notice", async () => {
     const h = harness();
-    const started = await h.service.run({ agent: "worker", task: "long", async: true }, { cwd: "/", creatorModel: {} });
+    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long", async: true }, { cwd: "/", creatorModel: {} });
     await h.service.cancel(started.subagentId!);
     expect(h.runs[0]!.abort).toHaveBeenCalledOnce();
     expect(h.runs[0]!.dispose).toHaveBeenCalledOnce();
@@ -86,7 +86,7 @@ describe("direct child management actions", () => {
     const tool = createSubagentTool(h.service, createCallerCatalog(catalog));
     const schema = tool.parameters as { anyOf: Array<{ properties: { action: { const: string } } }> };
     expect(schema.anyOf.map((entry) => entry.properties.action.const)).toEqual(expect.arrayContaining(["wait", "cancel"]));
-    const started = await h.service.run({ agent: "worker", task: "long", async: true }, { cwd: "/", creatorModel: {} });
+    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long", async: true }, { cwd: "/", creatorModel: {} });
     const cancel = await tool.execute("cancel-call", { action: "cancel", subagentId: started.subagentId } as never, undefined, undefined, { cwd: "/" } as never);
     expect(cancel.content).toEqual([]);
   });

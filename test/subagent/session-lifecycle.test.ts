@@ -65,13 +65,13 @@ function harness() {
 describe("Pi session lifecycle cancellation", () => {
   it("awaits cancellation for tree navigation but keeps the session service reusable", async () => {
     const h = harness();
-    await h.service.run({ agent: "worker", task: "first", async: true }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "worker", task: "first", prompt: "first", async: true }, { cwd: "/project", creatorModel: {} });
 
     await h.service.cancelActive("tree navigation");
     expect(h.runs[0]!.abort).toHaveBeenCalledOnce();
     expect(h.service.listSubagents()).toEqual([]);
 
-    const second = h.service.run({ agent: "worker", task: "second" }, { cwd: "/project", creatorModel: {} });
+    const second = h.service.run({ agent: "worker", task: "second", prompt: "second" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.runs).toHaveLength(2));
     h.gates[1]!.resolve();
     await expect(second).resolves.toMatchObject({ sessionId: "session-2", result: "done" });
@@ -97,7 +97,7 @@ describe("Pi session lifecycle cancellation", () => {
         expect.objectContaining({ session: crashLeft.sessionId, locked: false }),
       ]);
       await expect(freshService.run(
-        { agent: "worker", task: "resume", sessionId: crashLeft.sessionId },
+        { agent: "worker", task: "resume", prompt: "resume", sessionId: crashLeft.sessionId },
         { cwd: "/project", creatorModel: {} },
       )).resolves.toMatchObject({ sessionId: crashLeft.sessionId, result: "resumed" });
     } finally {
@@ -107,9 +107,9 @@ describe("Pi session lifecycle cancellation", () => {
 
   it("permanently rejects starts after shutdown and recognizes only an aborted terminal assistant turn", async () => {
     const h = harness();
-    await h.service.run({ agent: "worker", task: "active", async: true }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "worker", task: "active", prompt: "active", async: true }, { cwd: "/project", creatorModel: {} });
     await h.service.shutdown();
-    await expect(h.service.run({ agent: "worker", task: "late" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
+    await expect(h.service.run({ agent: "worker", task: "late", prompt: "late" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
 
     expect(isAbortedAgentEnd([{ role: "assistant", stopReason: "aborted" }])).toBe(true);
     expect(isAbortedAgentEnd([{ role: "assistant", stopReason: "stop" }])).toBe(false);

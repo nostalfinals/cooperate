@@ -1,6 +1,7 @@
 export interface RunRequest {
   agent: string;
   task: string;
+  prompt: string;
   sessionId?: string;
   async?: boolean;
 }
@@ -22,6 +23,11 @@ export interface RunResponse {
 export type ActiveSubagentState = "running" | "waiting";
 export type TerminalSubagentState = "finished" | "failed" | "cancelled";
 
+export interface SubagentActivity {
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
 export interface TerminalCause {
   state: TerminalSubagentState;
   reason?: string;
@@ -40,6 +46,7 @@ export interface SubagentSnapshot {
   readonly elapsedMs: number;
   readonly state: ActiveSubagentState | TerminalSubagentState;
   readonly reason?: string;
+  readonly activity?: SubagentActivity;
   readonly children: readonly SubagentSnapshot[];
 }
 

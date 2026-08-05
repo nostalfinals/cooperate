@@ -14,6 +14,7 @@ import { SubagentService } from "./subagent/service.ts";
 import { NativeSessionStore } from "./session/native-store.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "./session/ownership.ts";
 import { createSubagentTool } from "./tool/subagent-tool.ts";
+import { setToolDefinitionProvider } from "./tool/renderer.ts";
 import { renderCompletionMessage } from "./ui/presentation.ts";
 import { SubagentsOverlay } from "./ui/subagents-overlay.ts";
 import { copyMasterSessionDirectory, masterSessionIdFromFile } from "./session/master-copy.ts";
@@ -75,6 +76,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       service: () => state?.service,
       caller: () => (state ? createCallerCatalog(state.catalog) : undefined),
     }));
+    setToolDefinitionProvider((subagentId, toolName) => state?.service?.getToolDefinition(subagentId, toolName));
     pi.registerCommand("subagents", {
       description: "Inspect and cancel the active subagent tree",
       handler: async (_args, ctx) => {
