@@ -1,6 +1,6 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
 import { includesEntry, isWildcard, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
-import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
+import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "./continuation.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";

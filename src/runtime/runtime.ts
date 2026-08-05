@@ -9,7 +9,7 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createPiContinuationHost } from "../continuation.ts";
+import { createPiContinuationHost } from "../subagent/continuation.ts";
 import { subagentRoleBlock } from "../prompt.ts";
 import { includesEntry, isWildcard, type AgentDefinition } from "../catalog/definitions.ts";
 import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
-import type { ContinuationHost } from "../../src/continuation.ts";
+import type { ContinuationHost } from "../../src/subagent/continuation.ts";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
 import type { SessionRecord, SessionStore } from "../../src/session/types.ts";

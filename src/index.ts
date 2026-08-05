@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, loadCatalog } from "./catalog/catalog.ts";
 import type { DefinitionCatalog } from "./catalog/definitions.ts";
-import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
+import { COMPLETION_MESSAGE, createPiContinuationHost } from "./subagent/continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory } from "./runtime/runtime.ts";
 import type { ChildRuntimeFactory } from "./runtime/types.ts";

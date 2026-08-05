@@ -1,6 +1,6 @@
 import type { AgentDefinition } from "../catalog/definitions.ts";
 import type { CallerCatalog, ThinkingLevel } from "../catalog/types.ts";
-import type { ContinuationHost } from "../continuation.ts";
+import type { ContinuationHost } from "../subagent/continuation.ts";
 import type { SessionRecord } from "../session/types.ts";
 import type {
   RunEnvironment,

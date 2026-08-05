@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPiContinuationHost } from "../src/continuation.ts";
+import { createPiContinuationHost } from "../src/subagent/continuation.ts";
 
 function fakePi() {
   const handlers = new Map<string, Array<(event: any) => unknown>>();
