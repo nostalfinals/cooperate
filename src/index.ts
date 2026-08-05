@@ -4,11 +4,13 @@ import {
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, loadCatalog, type DefinitionCatalog } from "./catalog.ts";
-import { createPiContinuationHost } from "./continuation.ts";
+import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory, type ChildRuntimeFactory } from "./runtime.ts";
 import { NativeSessionStore, OWNERSHIP_ENTRY, ownedSessionIds } from "./sessions.ts";
 import { BlockingSubagentService, createSubagentTool, isAbortedAgentEnd } from "./subagent.ts";
+import { renderCompletionMessage } from "./presentation.ts";
+import { SubagentsOverlay } from "./overlay.ts";
 import {
   collectMasterSessionIds,
   copyMasterSessionDirectory,
@@ -45,6 +47,30 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
   return (pi: ExtensionAPI) => {
     let state: SessionCatalogState | undefined;
     const continuation = createPiContinuationHost(pi);
+    pi.registerMessageRenderer(COMPLETION_MESSAGE, renderCompletionMessage);
+    pi.registerCommand("subagents", {
+      description: "Inspect and cancel the active subagent tree",
+      handler: async (_args, ctx) => {
+        if (ctx.mode !== "tui") return;
+        const service = state?.service;
+        if (!service) return;
+        await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+          const unsubscribe = service.subscribe(() => tui.requestRender());
+          return new SubagentsOverlay({
+            theme,
+            snapshots: () => service.snapshotRoots(),
+            cancel: (subagentId) => service.cancelFromUi(subagentId),
+            close: () => done(undefined),
+            requestRender: () => tui.requestRender(),
+            onDispose: unsubscribe,
+            startTimer: true,
+          });
+        }, {
+          overlay: true,
+          overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%", margin: 1 },
+        });
+      },
+    });
 
     pi.on("session_start", async (event, ctx) => {
       await state?.shutdown();

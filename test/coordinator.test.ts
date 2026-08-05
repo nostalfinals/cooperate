@@ -56,6 +56,13 @@ describe("StructuredCoordinator", () => {
     expect(coordinator.isSessionLocked("c")).toBe(false);
   });
 
+  it("records resolved model and thinking metadata in snapshots", () => {
+    const coordinator = new StructuredCoordinator(3, { generateId: () => "00000001" });
+    const node = coordinator.start({ parentId: undefined, sessionId: "p", agent: "worker", task: "task" });
+    coordinator.setRuntimeInfo(node.subagentId, { model: "anthropic/claude-sonnet", thinking: "high" });
+    expect(coordinator.snapshot(node.subagentId)).toMatchObject({ model: "anthropic/claude-sonnet", thinking: "high" });
+  });
+
   it("returns deeply immutable snapshots that retain completed descendants", async () => {
     const coordinator = new StructuredCoordinator(3, { generateId: (() => { let n = 0; return () => `${++n}`.padStart(8, "0"); })() });
     const parent = coordinator.start({ parentId: undefined, sessionId: "p", agent: "parent", task: "parent" });

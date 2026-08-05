@@ -74,6 +74,7 @@ describe("Pi child runtime adapter", () => {
       "No subagent is defined yet", "global", "project", "Definition body",
     ]);
     expect(sessionOptions).toMatchObject({ model: { id: "creator" }, thinkingLevel: "low", tools: ["read", "custom"] });
+    expect(run).toMatchObject({ model: "creator", thinking: "low" });
     expect(session.bindExtensions).toHaveBeenCalledOnce();
     await run.prompt("isolated task");
     expect(session.prompt).toHaveBeenCalledWith("isolated task");

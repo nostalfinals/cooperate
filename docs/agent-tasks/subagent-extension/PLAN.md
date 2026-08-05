@@ -20,7 +20,7 @@
 - [x] Slice 4 — Coordinate a nested structured runtime tree
 - [x] Slice 5 — Run asynchronously and manage direct children
 - [x] Slice 6 — Preserve Session semantics across Pi lifecycle changes
-- [ ] Slice 7 — Deliver the complete TUI presentation
+- [x] Slice 7 — Deliver the complete TUI presentation
 
 ## Current codebase state
 
@@ -324,11 +324,19 @@ Child ownership and data remain correct through compaction, branch navigation, m
 
 ### Slice 7 — Deliver the complete TUI presentation
 
-**Status:** Pending
+**Status:** Complete
 
 **Outcome**
 
 Blocking runs, async starts, management actions, terminal messages, and the active runtime tree have the approved compact visual hierarchy, expanded detail, live updates, and keyboard-driven cancellation flow.
+
+**Completed work**
+
+- Added exact action-specific tool headers and compact/expanded result rendering, live blocking-subtree updates, retained terminal snapshots, semantic state marks, responsive hierarchy rendering, and resolved model/thinking presentation metadata.
+- Added the standard-expanded-state custom completion renderer and a live bordered `/subagents` overlay with active-tree scrolling, list/detail/empty views, accent selection, default-No subtree cancellation confirmation, awaited cancellation, and TUI-only command handling.
+- Added deterministic renderer and overlay tests covering semantic roles, narrow-width truncation, exact completion strings, navigation, details, cancellation waiting, and empty-state refresh.
+- Validation: `npm test -- test/tool-renderer.test.ts test/message-renderer.test.ts` (8 tests passed); `npm test -- test/subagents-overlay.test.ts` (4 tests passed); `npm run typecheck` (passed); full `npm test` (89 tests passed); `npm pack --dry-run` (passed, 12 package files); `PI_OFFLINE=1 pi -e . --help` (passed).
+- Deviations: None.
 
 **Scope**
 

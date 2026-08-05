@@ -29,6 +29,8 @@ export interface ChildInvocation {
 }
 
 export interface ChildRun {
+  readonly model?: string;
+  readonly thinking?: ThinkingLevel;
   prompt(task: string): Promise<void>;
   abort(): void;
   dispose(): Promise<void>;
@@ -127,6 +129,13 @@ export function resolveInvocationSettings(
   };
 }
 
+function modelReference(model: unknown): string {
+  if (typeof model !== "object" || model === null) return String(model ?? "unknown");
+  const value = model as { provider?: unknown; id?: unknown; modelId?: unknown };
+  const id = typeof value.id === "string" ? value.id : typeof value.modelId === "string" ? value.modelId : undefined;
+  return typeof value.provider === "string" && id ? `${value.provider}/${id}` : id ?? "unknown";
+}
+
 function terminalFailure(messages: readonly unknown[], startIndex: number): string | undefined {
   for (let index = messages.length - 1; index >= startIndex; index--) {
     const message = messages[index];
@@ -221,6 +230,8 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     const startIndex = session.messages.length;
     let disposed = false;
     return {
+      model: invocation.definition.model?.reference ?? modelReference(resolved.model),
+      thinking: resolved.thinking,
       prompt: async (task) => {
         await session.prompt(task);
         const failure = terminalFailure(session.messages, startIndex);

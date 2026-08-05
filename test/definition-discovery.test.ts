@@ -87,6 +87,8 @@ describe("main prompt discovery", () => {
         getAllTools: vi.fn(() => [{ name: "read" }]),
         appendEntry: vi.fn(),
         registerTool: vi.fn(),
+        registerMessageRenderer: vi.fn(),
+        registerCommand: vi.fn(),
       };
       createCooperateExtension({ agentDir, runtimeFactory: {} as never })(pi as never);
       await handlers.get("session_start")?.[0]?.({}, {

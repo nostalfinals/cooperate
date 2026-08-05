@@ -14,6 +14,8 @@ export interface SubagentSnapshot {
   readonly agent: string;
   readonly sessionId: string;
   readonly task: string;
+  readonly model?: string;
+  readonly thinking?: string;
   readonly depth: number;
   readonly startedAt: number;
   readonly elapsedMs: number;
@@ -45,6 +47,8 @@ interface NodeRecord {
   agent: string;
   sessionId: string;
   task: string;
+  model?: string;
+  thinking?: string;
   depth: number;
   startedAt: number;
   children: Set<string>;
@@ -119,6 +123,13 @@ export class StructuredCoordinator {
     const node = this.require(subagentId);
     node.abort = abort;
     if (node.abortInvoked) abort();
+  }
+
+  setRuntimeInfo(subagentId: string, info: { model: string; thinking: string }): void {
+    const node = this.require(subagentId);
+    node.model = info.model;
+    node.thinking = info.thinking;
+    this.emit();
   }
 
   ownLoopEnded(subagentId: string, cause: TerminalCause): void {
@@ -240,6 +251,8 @@ export class StructuredCoordinator {
       agent: node.agent,
       sessionId: node.sessionId,
       task: node.task,
+      model: node.model,
+      thinking: node.thinking,
       depth: node.depth,
       startedAt: node.startedAt,
       elapsedMs: Math.max(0, this.now() - node.startedAt),
