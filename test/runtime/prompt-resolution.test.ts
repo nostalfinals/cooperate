@@ -14,7 +14,7 @@ const baseDefinition: AgentDefinition = {
   description: "Worker",
   tools: ["read", "custom"],
   subagentAgents: [],
-  body: "Definition body",
+  body: "definition body",
   filePath: "/defs/worker.md",
 };
 
@@ -72,7 +72,7 @@ describe("Pi child runtime adapter", () => {
     });
 
     expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual([
-      emptyCaller.discovery, "global", "project", expect.stringContaining("Definition body"),
+      "global", "project", expect.stringContaining("definition body"),
     ]);
     expect(sessionOptions).toMatchObject({ model: { id: "creator" }, thinkingLevel: "low", tools: ["read", "custom"] });
     expect(run).toMatchObject({ model: "creator", thinking: "low" });
@@ -87,12 +87,12 @@ describe("Pi child runtime adapter", () => {
     await expect(run.prompt("fails")).rejects.toThrow("model failed");
   });
 
-  it("overrides a child's subagent tool with its caller-scoped discovery action", async () => {
+  it("leaves the subagent tool absent when the parent granted no nested tool", async () => {
     let customTools: Array<{ execute: (...args: any[]) => Promise<{ content: unknown[] }> }> | undefined;
     const session = {
       messages: [],
-      getAllTools: () => [{ name: "subagent" }],
-      getActiveToolNames: () => ["subagent"],
+      getAllTools: () => [{ name: "read" }],
+      getActiveToolNames: () => ["read"],
       setActiveToolsByName: vi.fn(),
       bindExtensions: vi.fn(async () => undefined),
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
@@ -107,20 +107,19 @@ describe("Pi child runtime adapter", () => {
 
     await factory.start({
       cwd: "/project",
-      definition: { ...baseDefinition, tools: ["subagent"] },
+      definition: { ...baseDefinition, tools: ["read"] },
       callerCatalog: emptyCaller,
       record: { sessionId: "id", file: "/id", native: {} },
       creatorModel: {},
       task: "task",
     });
 
-    expect(customTools).toHaveLength(1);
-    const result = await customTools?.[0]?.execute("call", { action: "list-definitions" }, undefined, undefined, { cwd: "/project" });
-    expect(result?.content).toEqual([{ type: "text", text: emptyCaller.discovery }]);
+    expect(customTools).toBeUndefined();
   });
 
   it("activates every available tool when the tools allowlist is the '*' wildcard", async () => {
     let sessionOptions: Record<string, unknown> | undefined;
+    let resourceOptions: { appendSystemPromptOverride?: (base: string[]) => string[] } | undefined;
     let activeToolNames: string[] = [];
     const session = {
       messages: [],
@@ -131,7 +130,10 @@ describe("Pi child runtime adapter", () => {
       prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
     };
     const factory = new PiChildRuntimeFactory({
-      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createServices: async (options) => {
+        resourceOptions = options.resourceLoaderOptions;
+        return { modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } };
+      },
       createSession: async (input) => {
         sessionOptions = input as unknown as Record<string, unknown>;
         return { session, dispose: async () => session.dispose() };
@@ -145,9 +147,13 @@ describe("Pi child runtime adapter", () => {
       record: { sessionId: "id", file: "/id", native: {} },
       creatorModel: {},
       task: "task",
+      subagentTool: { execute: vi.fn() },
     });
 
     expect(sessionOptions).toMatchObject({ tools: undefined, customTools: [expect.anything()] });
+    expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
+      emptyCaller.discovery, "global", expect.stringContaining("definition body"),
+    ]);
     expect(session.setActiveToolsByName).toHaveBeenCalledWith(["read", "bash", "extra"]);
   });
 
@@ -242,7 +248,7 @@ describe("Pi child runtime adapter", () => {
 
     await start({ ...baseDefinition, tools: [], body: "Act as a focused worker." });
     expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      emptyCaller.discovery, "global", expect.stringContaining("Act as a focused worker."),
+      "global", expect.stringContaining("Act as a focused worker."),
     ]);
     const handlers = new Map<string, (...args: any[]) => unknown>();
     resourceOptions?.extensionFactories?.[0]?.factory({ on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler) });
@@ -250,7 +256,7 @@ describe("Pi child runtime adapter", () => {
 
     await start({ ...baseDefinition, tools: [], body: "   \n" });
     expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      emptyCaller.discovery, "global",
+      "global",
     ]);
   });
 

@@ -83,7 +83,7 @@ export class SubagentService {
     if (request.async && !this.messenger) {
       throw new Error("asynchronous subagent startup requires a bound messenger");
     }
-    // Depth must win over Session creation, ownership, and locking side effects.
+    // Depth must win over session creation, ownership, and locking side effects.
     this.coordinator.assertCanStart(this.parentId);
 
     let record: SessionRecord;

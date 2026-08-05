@@ -56,7 +56,7 @@ export class NativeSessionStore implements SessionStore {
     const file = resolve(allocatedFile);
     // Pi intentionally delays its first write until an assistant response. We
     // persist the native header immediately so startup/auth failures still leave
-    // the approved resumable Session, then reopen through SessionManager so all
+    // the approved resumable session, then reopen through SessionManager so all
     // subsequent writes use Pi's normal append path.
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, `${JSON.stringify(allocated.getHeader())}\n`, { encoding: "utf8", flag: "wx" });

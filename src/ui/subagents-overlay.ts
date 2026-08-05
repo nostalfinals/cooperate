@@ -180,7 +180,7 @@ export class SubagentsOverlay implements Component {
       `thinking ${snapshot.thinking ?? "unknown"}`,
       `depth ${snapshot.depth}`,
       `subagent ${snapshot.subagentId}`,
-      `Session ${snapshot.sessionId}`,
+      `session ${snapshot.sessionId}`,
       `direct children ${snapshot.children.filter(isActive).length}`,
     ].join("\n"), 1, 0));
     return this.finishShell(container, "c cancel subtree   esc back");

@@ -28,7 +28,7 @@ export interface MasterCopyOptions {
   copy?: (source: string, destination: string) => Promise<void>;
 }
 
-/** Atomically copy one master's complete child-Session namespace. */
+/** Atomically copy one master's complete child-session namespace. */
 export async function copyMasterSessionDirectory(
   agentDir: string,
   sourceMasterId: string,
@@ -65,7 +65,7 @@ export async function copyMasterSessionDirectory(
   }
 }
 
-/** Read a master UUID through Pi's native Session parser, not its filename. */
+/** Read a master UUID through Pi's native session parser, not its filename. */
 export function masterSessionIdFromFile(sessionFile: string): string {
   return SessionManager.open(sessionFile).getSessionId();
 }

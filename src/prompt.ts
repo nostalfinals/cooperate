@@ -18,7 +18,7 @@ function nativeSuffixStart(systemPrompt: string, options: BuildSystemPromptOptio
   return cwdStart >= 0 ? cwdStart : systemPrompt.length;
 }
 
-/** Wrap a Definition body in its standalone role block, or nothing when the body is blank. */
+/** Wrap a definition body in its standalone role block, or nothing when the body is blank. */
 export function subagentRoleBlock(body: string): string | undefined {
   if (body.trim().length === 0) return undefined;
   return `<subagent_role>\n${body}\n</subagent_role>`;

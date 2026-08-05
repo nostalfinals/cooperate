@@ -12,7 +12,6 @@ import {
 import { createCompletionMessenger } from "../subagent/messenger.ts";
 import { subagentRoleBlock } from "../prompt.ts";
 import { includesEntry, isWildcard, type AgentDefinition } from "../catalog/definitions.ts";
-import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";
 import type { ChildRuntimeFactory, ModelRuntimeLike, SubagentInvocation, SubagentRun } from "./types.ts";
 
 interface SettingsManagerLike {
@@ -142,6 +141,9 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
   async start(invocation: SubagentInvocation): Promise<SubagentRun> {
     const systemPromptMode = invocation.definition.systemPromptMode ?? "append";
     const roleBlock = systemPromptMode === "append" ? subagentRoleBlock(invocation.definition.body) : undefined;
+    const discoveryBlocks = includesEntry(invocation.definition.tools, "subagent")
+      ? [invocation.callerCatalog.discovery]
+      : [];
     const lifecycleExtension: InlineExtension = {
       name: "cooperate-structured-scope",
       hidden: true,
@@ -166,7 +168,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
         appendSystemPromptOverride: (base) => systemPromptMode === "override"
           ? base
           : [
-              invocation.callerCatalog.discovery,
+              ...discoveryBlocks,
               ...base,
               ...(roleBlock ? [roleBlock] : []),
             ],
@@ -188,9 +190,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       model: modelConfig.model,
       thinkingLevel: modelConfig.thinking,
       tools: allTools ? undefined : [...invocation.definition.tools],
-      customTools: includesEntry(invocation.definition.tools, "subagent")
-        ? [(invocation.subagentTool as ToolDefinition | undefined) ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
-        : undefined,
+      customTools: invocation.subagentTool ? [invocation.subagentTool as ToolDefinition] : undefined,
     });
     const { session } = created;
 

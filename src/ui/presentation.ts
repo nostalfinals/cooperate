@@ -97,7 +97,7 @@ export function renderCompletionMessage(
   if (options.expanded) {
     const body = notice.state === "finished" ? notice.result ?? "<none>" : notice.reason ?? notice.state;
     text += `\n\n${theme.fg("customMessageText", body)}`;
-    text += "\n" + theme.fg("muted", `Session: ${notice.sessionId} · ${formatElapsed(notice.elapsedMs)}`);
+    text += "\n" + theme.fg("muted", `session: ${notice.sessionId} · ${formatElapsed(notice.elapsedMs)}`);
   }
   box.addChild(new Text(text, 0, 0));
   return box;

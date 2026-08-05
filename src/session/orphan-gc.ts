@@ -26,7 +26,6 @@ async function jsonlFiles(directory: string): Promise<string[]> {
   return files;
 }
 
-/** Discover valid native master Sessions in Pi's default and active Session trees. */
 export async function collectMasterSessionIds(
   agentDir: string,
   additionalSessionDirectories: readonly string[] = [],
@@ -43,7 +42,7 @@ export async function collectMasterSessionIds(
       const header = JSON.parse(firstLine) as { type?: string; id?: string };
       if (header.type === "session" && typeof header.id === "string") ids.add(header.id);
     } catch {
-      // Pi also ignores invalid Session files when listing native Sessions.
+      // Pi also ignores invalid session files when listing native sessions
     }
   }
   return ids;
@@ -85,7 +84,7 @@ async function systemTrash(path: string): Promise<boolean> {
   return false;
 }
 
-/** Remove namespaces whose owning native master Session was deleted. */
+/** Remove namespaces whose owning native master session was deleted. */
 export async function garbageCollectOrphanSessions(
   agentDir: string,
   existingMasterIds: ReadonlySet<string>,

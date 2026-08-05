@@ -41,13 +41,15 @@ describe("Definition discovery text", () => {
 });
 
 describe("Definition discovery action", () => {
-  it("retains the constrained run enum and returns the caller-scoped discovery text", async () => {
+  it("keeps the agent name unconstrained and returns the caller-scoped discovery text", async () => {
     const caller = createCallerCatalog(catalog, ["scout"]);
     const tool = createSubagentTool({} as never, caller);
-    const schema = tool.parameters as { anyOf: Array<{ properties: Record<string, { const?: string; enum?: string[] }> }> };
+    const schema = tool.parameters as { anyOf: Array<{ properties: Record<string, { const?: string; type?: string; enum?: string[] }> }> };
 
     expect(schema.anyOf.map((shape) => shape.properties.action.const)).toContain("list-definitions");
-    expect(schema.anyOf.find((shape) => shape.properties.action.const === "run")?.properties.agent.enum).toEqual(["scout"]);
+    const runShape = schema.anyOf.find((shape) => shape.properties.action.const === "run");
+    expect(runShape?.properties.agent.type).toBe("string");
+    expect(runShape?.properties.agent.enum).toBeUndefined();
 
     const result = await tool.execute("call", { action: "list-definitions" } as never, undefined, undefined, { cwd: "/project" } as never);
     expect(result.content).toEqual([{ type: "text", text: caller.discovery }]);

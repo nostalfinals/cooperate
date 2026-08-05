@@ -50,6 +50,10 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     let sessionGeneration = 0;
     const messenger = createCompletionMessenger(pi);
     pi.registerMessageRenderer(COMPLETION_MESSAGE, renderCompletionMessage);
+    pi.registerTool(createSubagentTool({
+      service: () => state?.service,
+      caller: () => (state ? createCallerCatalog(state.catalog) : undefined),
+    }));
     pi.registerCommand("subagents", {
       description: "Inspect and cancel the active subagent tree",
       handler: async (_args, ctx) => {
@@ -124,7 +128,6 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         visibleSessionIds: () => ownedSessionIds(sessionManager.getBranch()),
       });
       state = new SessionCatalogState(catalog, service);
-      pi.registerTool(createSubagentTool(service, createCallerCatalog(catalog)));
     });
 
     pi.on("before_agent_start", (event) => {
@@ -141,7 +144,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("session_before_tree", async () => {
-      await state?.service.cancelActive("Session tree navigation");
+      await state?.service.cancelActive("session tree navigation");
     });
 
     pi.on("session_shutdown", async () => {

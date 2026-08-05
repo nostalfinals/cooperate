@@ -24,7 +24,7 @@ describe("parent messenger delivery", () => {
     await emit("agent_start");
     await messenger.send(notice("one"));
     await messenger.send(notice("two"));
-    expect(pi.sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ customType: "cooperate.subagent-completion" }), { deliverAs: "steer", triggerTurn: true });
+    expect(pi.sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ customType: "subagent" }), { deliverAs: "steer", triggerTurn: true });
     expect(pi.sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ content: expect.stringContaining("two result") }), { deliverAs: "steer", triggerTurn: true });
 
     await emit("agent_end");

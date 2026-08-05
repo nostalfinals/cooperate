@@ -41,7 +41,7 @@ describe("Pi package metadata", () => {
     const extension = createCooperateExtension({ agentDir: resolve("test/fixtures/missing-agent-dir") });
 
     extension(pi as never);
-    expect(pi.registerMessageRenderer).toHaveBeenCalledWith("cooperate.subagent-completion", expect.any(Function));
+    expect(pi.registerMessageRenderer).toHaveBeenCalledWith("subagent", expect.any(Function));
     expect(pi.registerCommand).toHaveBeenCalledWith("subagents", expect.objectContaining({ handler: expect.any(Function) }));
     expect([...handlers.keys()]).toEqual([
       "agent_start", "agent_end", "message_end", "session_start", "before_agent_start", "session_before_tree", "session_shutdown",

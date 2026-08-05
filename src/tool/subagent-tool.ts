@@ -22,13 +22,34 @@ function emptyResult(details: SubagentToolDetails): AgentToolResult<SubagentTool
   return { content: [], details };
 }
 
-export function createSubagentTool(service: SubagentToolService, caller: CallerCatalog): ToolDefinition {
+export interface SubagentToolResolver {
+  service(): SubagentToolService | undefined;
+  caller(): CallerCatalog | undefined;
+}
+
+type ToolDependencies = readonly [service: SubagentToolService, caller: CallerCatalog];
+
+export function createSubagentTool(service: SubagentToolService, caller: CallerCatalog): ToolDefinition;
+export function createSubagentTool(resolver: SubagentToolResolver): ToolDefinition;
+export function createSubagentTool(
+  serviceOrResolver: SubagentToolService | SubagentToolResolver,
+  caller?: CallerCatalog,
+): ToolDefinition {
+  const resolve = (): ToolDependencies => {
+    if (caller !== undefined) return [serviceOrResolver as SubagentToolService, caller];
+    const lazy = serviceOrResolver as SubagentToolResolver;
+    const service = lazy.service();
+    const catalog = lazy.caller();
+    if (!service || !catalog) throw new Error("subagent tool is unavailable outside an active session");
+    return [service, catalog];
+  };
   return {
     name: "subagent",
     label: "subagent",
     description: "Run and manage configured subagents and their sessions.",
-    parameters: actionSchema(caller.definitions.map((definition) => definition.name)),
+    parameters: actionSchema(),
     async execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
+      const [service, caller] = resolve();
       const action = (params as { action: string }).action;
       if (action === "run") {
         const request = params as unknown as RunRequest;
@@ -80,15 +101,4 @@ export function createSubagentTool(service: SubagentToolService, caller: CallerC
       return renderSubagentResult(result, options, theme, context);
     },
   };
-}
-
-export function createSubagentDiscoveryTool(caller: CallerCatalog): ToolDefinition {
-  const unavailable = (): never => { throw new Error("nested subagent coordination is unavailable"); };
-  return createSubagentTool({
-    run: async () => unavailable(),
-    listSubagents: unavailable,
-    listSessions: async () => unavailable(),
-    wait: async () => unavailable(),
-    cancel: async () => unavailable(),
-  }, caller);
 }
