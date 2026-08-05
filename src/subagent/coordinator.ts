@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 import type {
-  ActiveSubagentState,
   StartNode,
   StartedNode,
   SubagentSnapshot,

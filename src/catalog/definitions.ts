@@ -1,16 +1,40 @@
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseDocument } from "yaml";
-import { CatalogError, type AgentDefinition, type DefinitionModel, type ThinkingLevel } from "./types.ts";
+import { CatalogError, type CooperateConfig, type DefinitionModel, type ThinkingLevel } from "./types.ts";
 
-const DEFINITION_FIELDS = new Set([
+export type SystemPromptMode = "append" | "override";
+
+export interface AgentDefinition {
+  name: string;
+  description: string;
+  tools: readonly string[];
+  subagentAgents: readonly string[];
+  model?: DefinitionModel;
+  thinking?: ThinkingLevel;
+  /** How the Markdown body is applied to the subagent system prompt; absent means "append". */
+  systemPromptMode?: SystemPromptMode;
+  body: string;
+  filePath: string;
+}
+
+export interface DefinitionCatalog {
+  config: CooperateConfig;
+  definitions: readonly AgentDefinition[];
+  configPath: string;
+  definitionsPath: string;
+}
+
+const DEFINITION_CONFIG_FIELDS = new Set([
   "name",
   "description",
   "tools",
-  "subagent_agents",
+  "subagents",
   "model",
   "thinking",
+  "system-prompt-mode",
 ]);
+
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -113,18 +137,26 @@ function parseThinking(value: string | undefined, filePath: string): ThinkingLev
   return value as ThinkingLevel;
 }
 
+function parseSystemPromptMode(value: string | undefined, filePath: string): SystemPromptMode | undefined {
+  if (value === undefined) return undefined;
+  if (value !== "append" && value !== "override") {
+    throw new CatalogError(filePath, `system-prompt-mode must be "append" or "override"`);
+  }
+  return value;
+}
+
 async function loadDefinition(filePath: string): Promise<AgentDefinition> {
   let source: string;
   try {
     source = await readFile(filePath, "utf8");
   } catch (error) {
-    throw new CatalogError(filePath, `cannot read Definition: ${errorMessage(error)}`);
+    throw new CatalogError(filePath, `cannot read definition: ${errorMessage(error)}`);
   }
 
   const extracted = extractFrontmatter(source, filePath);
   const frontmatter = parseFrontmatter(extracted.yaml, filePath);
   for (const field of Object.keys(frontmatter)) {
-    if (!DEFINITION_FIELDS.has(field)) {
+    if (!DEFINITION_CONFIG_FIELDS.has(field)) {
       throw new CatalogError(filePath, `unknown frontmatter field '${field}'`);
     }
   }
@@ -132,15 +164,15 @@ async function loadDefinition(filePath: string): Promise<AgentDefinition> {
   const name = requiredString(frontmatter, "name", filePath);
   if (!NAME_PATTERN.test(name)) throw new CatalogError(filePath, "name must match ^[A-Za-z0-9_-]+$");
   const description = requiredString(frontmatter, "description", filePath);
-  if (extracted.body.trim().length === 0) throw new CatalogError(filePath, "Markdown body must be nonempty");
 
   return {
     name,
     description,
     tools: commaSeparatedList(frontmatter, "tools", filePath),
-    subagentAgents: commaSeparatedList(frontmatter, "subagent_agents", filePath),
+    subagentAgents: commaSeparatedList(frontmatter, "subagents", filePath),
     model: parseModel(optionalString(frontmatter, "model", filePath), filePath),
     thinking: parseThinking(optionalString(frontmatter, "thinking", filePath), filePath),
+    systemPromptMode: parseSystemPromptMode(optionalString(frontmatter, "system-prompt-mode", filePath), filePath),
     body: extracted.body,
     filePath,
   };
@@ -152,7 +184,7 @@ export async function loadDefinitions(definitionsPath: string): Promise<AgentDef
     entries = await readdir(definitionsPath, { withFileTypes: true });
   } catch (error) {
     if (errorCode(error) === "ENOENT") return [];
-    throw new CatalogError(definitionsPath, `cannot read Definition directory: ${errorMessage(error)}`);
+    throw new CatalogError(definitionsPath, `cannot read definition directory: ${errorMessage(error)}`);
   }
 
   const definitionEntries = entries
@@ -167,7 +199,7 @@ export async function loadDefinitions(definitionsPath: string): Promise<AgentDef
     if (previous) {
       throw new CatalogError(
         current.filePath,
-        `duplicate Definition name '${current.name}' (already defined in ${previous.filePath})`,
+        `duplicate definition name '${current.name}' (already defined in ${previous.filePath})`,
       );
     }
     definitions.push(current);

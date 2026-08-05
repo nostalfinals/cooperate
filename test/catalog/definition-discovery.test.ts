@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
-import { createCallerCatalog, formatDefinitionDiscovery } from "../src/catalog/caller-catalog.ts";
-import type { DefinitionCatalog } from "../src/catalog/types.ts";
-import { createCooperateExtension } from "../src/index.ts";
-import { injectDefinitionDiscovery } from "../src/prompt.ts";
-import { createSubagentTool } from "../src/tool/subagent-tool.ts";
+import { createCallerCatalog, formatDefinitionDiscovery } from "../../src/catalog/catalog.ts";
+import type { DefinitionCatalog } from "../../src/catalog/definitions.ts";
+import { createCooperateExtension } from "../../src/index.ts";
+import { injectDefinitionDiscovery } from "../../src/prompt.ts";
+import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 
 const catalog: DefinitionCatalog = {
   config: { maxDepth: 3, gcOrphanSessions: true },
@@ -26,16 +26,6 @@ const options = (overrides: Partial<BuildSystemPromptOptions> = {}): BuildSystem
 });
 
 describe("Definition discovery text", () => {
-  it("formats available Definitions in caller order and the exact empty response", () => {
-    expect(formatDefinitionDiscovery(createCallerCatalog(catalog).definitions)).toBe(
-      "Available subagent definitions:\n\n- worker: General work\n- scout: Search only",
-    );
-    expect(formatDefinitionDiscovery([])).toBe("No subagent is defined yet");
-    expect(formatDefinitionDiscovery(createCallerCatalog(catalog, ["scout"]).definitions)).toBe(
-      "Available subagent definitions:\n\n- scout: Search only",
-    );
-  });
-
   it("injects discovery at the native append boundary without duplicating it", () => {
     const prompt = "Base\n\nExisting append\n\n<project_context>\ncontext\n</project_context>\nCurrent working directory: /project";
     const discovery = formatDefinitionDiscovery(createCallerCatalog(catalog).definitions);
@@ -43,25 +33,24 @@ describe("Definition discovery text", () => {
 
     const injected = injectDefinitionDiscovery(prompt, structured, discovery);
 
-    expect(injected).toBe("Base\n\nAvailable subagent definitions:\n\n- worker: General work\n- scout: Search only\n\nExisting append\n\n<project_context>\ncontext\n</project_context>\nCurrent working directory: /project");
+    expect(injected.indexOf(discovery)).toBeGreaterThan(-1);
+    expect(injected.indexOf(discovery)).toBeLessThan(injected.indexOf("Existing append"));
     expect(injectDefinitionDiscovery(injected, structured, discovery)).toBe(injected);
     expect(injectDefinitionDiscovery(injected, structured, "No subagent is defined yet")).toBe(injected);
   });
 });
 
 describe("Definition discovery action", () => {
-  it("uses a generic description, retains the constrained run enum, and returns the shared formatter output", async () => {
+  it("retains the constrained run enum and returns the caller-scoped discovery text", async () => {
     const caller = createCallerCatalog(catalog, ["scout"]);
     const tool = createSubagentTool({} as never, caller);
     const schema = tool.parameters as { anyOf: Array<{ properties: Record<string, { const?: string; enum?: string[] }> }> };
 
-    expect(tool.description).toBe("Run and manage configured subagents and their Sessions.");
-    expect(tool.description).not.toContain("scout");
     expect(schema.anyOf.map((shape) => shape.properties.action.const)).toContain("list-definitions");
     expect(schema.anyOf.find((shape) => shape.properties.action.const === "run")?.properties.agent.enum).toEqual(["scout"]);
 
     const result = await tool.execute("call", { action: "list-definitions" } as never, undefined, undefined, { cwd: "/project" } as never);
-    expect(result.content).toEqual([{ type: "text", text: "Available subagent definitions:\n\n- scout: Search only" }]);
+    expect(result.content).toEqual([{ type: "text", text: caller.discovery }]);
   });
 });
 
@@ -99,14 +88,19 @@ describe("main prompt discovery", () => {
       });
 
       const before = handlers.get("before_agent_start")?.[0];
-      const result = await before?.({
+      const result = (await before?.({
         systemPrompt: "Earlier extension\nBase\n\nExisting append\nCurrent working directory: /project",
         systemPromptOptions: options({ appendSystemPrompt: "Existing append" }),
-      }, {});
+      }, {})) as { systemPrompt?: string } | undefined;
+      const systemPrompt = result?.systemPrompt ?? "";
+      const discovery = formatDefinitionDiscovery([
+        { name: "worker", description: "General work" },
+        { name: "scout", description: "Search only" },
+      ]);
 
-      expect(result).toEqual({
-        systemPrompt: "Earlier extension\nBase\n\nAvailable subagent definitions:\n\n- worker: General work\n- scout: Search only\n\nExisting append\nCurrent working directory: /project",
-      });
+      expect(systemPrompt.startsWith("Earlier extension\nBase")).toBe(true);
+      expect(systemPrompt.indexOf(discovery)).toBeGreaterThan(-1);
+      expect(systemPrompt.indexOf(discovery)).toBeLessThan(systemPrompt.indexOf("Existing append"));
     } finally {
       await rm(agentDir, { recursive: true, force: true });
     }

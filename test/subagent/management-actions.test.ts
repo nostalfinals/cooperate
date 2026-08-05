@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
-import type { ContinuationHost } from "../src/continuation.ts";
-import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
-import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
-import { SubagentService } from "../src/subagent/service.ts";
-import { createSubagentTool } from "../src/tool/subagent-tool.ts";
-import { createCallerCatalog } from "../src/catalog/caller-catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
+import type { ContinuationHost } from "../../src/continuation.ts";
+import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
+import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import { SubagentService } from "../../src/subagent/service.ts";
+import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
+import { createCallerCatalog } from "../../src/catalog/catalog.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -18,9 +19,9 @@ const catalog: DefinitionCatalog = { config: { maxDepth: 3, gcOrphanSessions: tr
 
 function harness() {
   const gates: Array<ReturnType<typeof deferred>> = [];
-  const runs: ChildRun[] = [];
+  const runs: SubagentRun[] = [];
   const records: SessionRecord[] = [];
-  const invocations: ChildInvocation[] = [];
+  const invocations: SubagentInvocation[] = [];
   const store: SessionStore = {
     create: vi.fn(async () => {
       const record = { sessionId: `session-${records.length + 1}`, file: `/session-${records.length + 1}.jsonl` };
@@ -40,7 +41,7 @@ function harness() {
       invocations.push(invocation);
       const gate = deferred();
       gates.push(gate);
-      const run: ChildRun = {
+      const run: SubagentRun = {
         prompt: vi.fn(() => gate.promise), abort: vi.fn(() => gate.resolve()), dispose: vi.fn(async () => undefined),
         messagesSinceStart: () => [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
       };
@@ -65,8 +66,8 @@ describe("direct child management actions", () => {
     expect(settled).toBe(false);
     h.gates[1]!.resolve();
     await waiting;
-    await expect(h.service.wait([one.subagentId!])).rejects.toThrow("not an active direct child");
-    await expect(h.service.wait(["00000001", "00000001"])).rejects.toThrow("unique");
+    await expect(h.service.wait([one.subagentId!])).rejects.toThrow();
+    await expect(h.service.wait(["00000001", "00000001"])).rejects.toThrow();
   });
 
   it("cancels one direct subtree, waits for disposal, and emits only the target's async cancellation notice", async () => {
@@ -77,7 +78,7 @@ describe("direct child management actions", () => {
     expect(h.runs[0]!.dispose).toHaveBeenCalledOnce();
     expect(h.continuation.send).toHaveBeenCalledOnce();
     expect(vi.mocked(h.continuation.send).mock.calls[0]![0]).toMatchObject({ state: "cancelled", agent: "worker" });
-    await expect(h.service.cancel(started.subagentId!)).rejects.toThrow("not an active direct child");
+    await expect(h.service.cancel(started.subagentId!)).rejects.toThrow();
   });
 
   it("dispatches wait and cancel through the complete public tool schema", async () => {

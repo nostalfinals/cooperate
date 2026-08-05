@@ -11,24 +11,6 @@ export interface DefinitionModel {
   reference: string;
 }
 
-export interface AgentDefinition {
-  name: string;
-  description: string;
-  tools: readonly string[];
-  subagentAgents: readonly string[];
-  model?: DefinitionModel;
-  thinking?: ThinkingLevel;
-  body: string;
-  filePath: string;
-}
-
-export interface DefinitionCatalog {
-  config: CooperateConfig;
-  definitions: readonly AgentDefinition[];
-  configPath: string;
-  definitionsPath: string;
-}
-
 export interface ModelRegistryLike {
   find(provider: string, modelId: string): unknown;
 }

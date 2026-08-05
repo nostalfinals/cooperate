@@ -1,15 +1,11 @@
-import { createCallerCatalog } from "../catalog/caller-catalog.ts";
-import type { AgentDefinition, DefinitionCatalog } from "../catalog/types.ts";
+import { createCallerCatalog } from "../catalog/catalog.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../catalog/definitions.ts";
 import { type CompletionNotice, type ContinuationHost, ContinuationRelay } from "../continuation.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../sessions/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
-import type {
-  ChildRun,
-  ChildRuntimeFactory,
-  SessionRecord,
-  SessionStore,
-  SubagentToolFactory,
-} from "./ports.ts";
+import type { SessionRecord, SessionStore } from "../sessions/types.ts";
+import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
+import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
 import { extractFinalText } from "./result.ts";
 import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot, TerminalCause } from "./types.ts";
@@ -103,7 +99,7 @@ export class SubagentService {
     }
 
     if (definition.tools.includes("subagent") && !record.native) {
-      throw new Error("child Session record has no native SessionManager for nested ownership");
+      throw new Error("child session record has no native SessionManager for nested ownership");
     }
     const started = this.coordinator.start({
       parentId: this.parentId,
@@ -119,7 +115,7 @@ export class SubagentService {
       ? this.options.toolFactory(nestedService, callerCatalog)
       : undefined;
 
-    let run: ChildRun;
+    let run: SubagentRun;
     try {
       run = await this.options.runtimeFactory.start({
         cwd: environment.cwd,
@@ -304,7 +300,7 @@ export class SubagentService {
     subagentId: string,
     record: SessionRecord,
     task: string,
-    run: ChildRun,
+    run: SubagentRun,
     signal?: AbortSignal,
   ): Promise<ExecutionOutcome> {
     let cause: TerminalCause = { state: "finished" };

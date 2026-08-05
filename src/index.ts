@@ -3,13 +3,12 @@ import {
   type ExtensionAPI,
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import { createCallerCatalog } from "./catalog/caller-catalog.ts";
-import { loadCatalog } from "./catalog/catalog.ts";
-import type { DefinitionCatalog } from "./catalog/types.ts";
+import { createCallerCatalog, loadCatalog } from "./catalog/catalog.ts";
+import type { DefinitionCatalog } from "./catalog/definitions.ts";
 import { COMPLETION_MESSAGE, createPiContinuationHost } from "./continuation.ts";
 import { injectDefinitionDiscovery } from "./prompt.ts";
-import { PiChildRuntimeFactory } from "./runtime/pi-child-runtime.ts";
-import type { ChildRuntimeFactory } from "./subagent/ports.ts";
+import { PiChildRuntimeFactory } from "./runtime/runtime.ts";
+import type { ChildRuntimeFactory } from "./runtime/types.ts";
 import { isAbortedAgentEnd } from "./subagent/result.ts";
 import { SubagentService } from "./subagent/service.ts";
 import { NativeSessionStore } from "./sessions/native-store.ts";
@@ -153,5 +152,3 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
   };
 }
-
-export default createCooperateExtension();

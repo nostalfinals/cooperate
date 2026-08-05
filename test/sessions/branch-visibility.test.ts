@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions/ownership.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
 
-describe("branch-visible Session ownership", () => {
+describe("branch-visible session ownership", () => {
   it("survives compaction because native custom entries remain on the branch", () => {
     const compactedBranch = [
       { type: "custom", id: "owned", parentId: null, customType: OWNERSHIP_ENTRY, data: { sessionId: "child-before-compaction" } },

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
+import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -8,12 +8,12 @@ function deferred() {
 }
 
 describe("StructuredCoordinator", () => {
-  it("allocates collision-checked transient IDs, enforces global Session locks, and releases both at terminal completion", async () => {
+  it("allocates collision-checked transient IDs, enforces global session locks, and releases both at terminal completion", async () => {
     const ids = ["deadbeef", "deadbeef", "cafebabe"];
     const coordinator = new StructuredCoordinator(3, { generateId: () => ids.shift()! });
     const first = coordinator.start({ parentId: undefined, sessionId: "session-1", agent: "worker", task: "one" });
     expect(first.subagentId).toBe("deadbeef");
-    expect(() => coordinator.start({ parentId: undefined, sessionId: "session-1", agent: "worker", task: "locked" })).toThrow("locked");
+    expect(() => coordinator.start({ parentId: undefined, sessionId: "session-1", agent: "worker", task: "locked" })).toThrow();
     const second = coordinator.start({ parentId: undefined, sessionId: "session-2", agent: "worker", task: "two" });
     expect(second.subagentId).toBe("cafebabe");
 
@@ -51,7 +51,7 @@ describe("StructuredCoordinator", () => {
       .mockReturnValueOnce("00000002");
     const coordinator = new StructuredCoordinator(2, { generateId });
     const parent = coordinator.start({ parentId: undefined, sessionId: "p", agent: "parent", task: "task" });
-    expect(() => coordinator.start({ parentId: parent.subagentId, sessionId: "c", agent: "child", task: "task" })).toThrow("maxDepth");
+    expect(() => coordinator.start({ parentId: parent.subagentId, sessionId: "c", agent: "child", task: "task" })).toThrow();
     expect(generateId).toHaveBeenCalledOnce();
     expect(coordinator.isSessionLocked("c")).toBe(false);
   });

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
-import { loadDefinitions } from "./definitions.ts";
-import { CatalogError, type AgentDefinition, type CatalogLoadOptions, type DefinitionCatalog, type ModelRegistryLike } from "./types.ts";
+import { loadDefinitions, type AgentDefinition, type DefinitionCatalog } from "./definitions.ts";
+import { CatalogError, type CallerCatalog, type CatalogLoadOptions, type ModelRegistryLike } from "./types.ts";
 
 function validateDefinitions(
   definitions: readonly AgentDefinition[],
@@ -14,10 +14,10 @@ function validateDefinitions(
       if (!availableTools.has(tool)) throw new CatalogError(definition.filePath, `unavailable tool '${tool}'`);
     }
     if (definition.subagentAgents.length > 0 && !definition.tools.includes("subagent")) {
-      throw new CatalogError(definition.filePath, "nonempty subagent_agents requires 'subagent' in tools");
+      throw new CatalogError(definition.filePath, "nonempty subagents requires 'subagent' in tools");
     }
     for (const child of definition.subagentAgents) {
-      if (!names.has(child)) throw new CatalogError(definition.filePath, `unknown Definition '${child}' in subagent_agents`);
+      if (!names.has(child)) throw new CatalogError(definition.filePath, `unknown definition '${child}' in subagents`);
     }
     if (definition.model && !modelRegistry.find(definition.model.provider, definition.model.modelId)) {
       throw new CatalogError(
@@ -38,4 +38,29 @@ export async function loadCatalog(options: CatalogLoadOptions): Promise<Definiti
   validateDefinitions(definitions, new Set(options.availableTools), options.modelRegistry);
 
   return { config, definitions, configPath, definitionsPath };
+}
+
+export function formatDefinitionDiscovery(definitions: readonly { name: string; description: string }[]): string {
+  if (definitions.length === 0) return "No subagent is defined yet";
+  return `Available subagent definitions:\n\n${definitions.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`;
+}
+
+export function createCallerCatalog(
+  catalog: DefinitionCatalog,
+  allowedNames?: readonly string[],
+): CallerCatalog {
+  const byName = new Map(catalog.definitions.map((definition) => [definition.name, definition]));
+  const selected = allowedNames === undefined
+    ? [...catalog.definitions]
+    : allowedNames.map((name) => {
+        const definition = byName.get(name);
+        if (!definition) throw new CatalogError(catalog.definitionsPath, `unknown allowed definition '${name}'`);
+        return definition;
+      });
+  const definitions = selected.map(({ name, description }) => ({ name, description }));
+
+  return {
+    definitions,
+    discovery: formatDefinitionDiscovery(definitions),
+  };
 }

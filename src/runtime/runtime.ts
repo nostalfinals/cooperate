@@ -10,13 +10,10 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createPiContinuationHost } from "../continuation.ts";
-import type { ChildInvocation, ChildRun, ChildRuntimeFactory } from "../subagent/ports.ts";
+import { subagentRoleBlock } from "../prompt.ts";
+import type { AgentDefinition } from "../catalog/definitions.ts";
 import { createSubagentDiscoveryTool } from "../tool/subagent-tool.ts";
-import { modelReference, resolveInvocationSettings } from "./invocation-settings.ts";
-
-interface ModelRuntimeLike {
-  getModel(provider: string, modelId: string): unknown;
-}
+import type { ChildRuntimeFactory, ModelRuntimeLike, SubagentInvocation, SubagentRun } from "./types.ts";
 
 interface SettingsManagerLike {
   getDefaultThinkingLevel(): ThinkingLevel | undefined;
@@ -71,7 +68,7 @@ const defaultSdk: RuntimeSdk = {
     const runtime = new AgentSessionRuntime(
       result.session,
       services,
-      async () => { throw new Error("child Session replacement is not supported"); },
+      async () => { throw new Error("child session replacement is not supported"); },
       services.diagnostics,
       result.modelFallbackMessage,
     );
@@ -103,8 +100,35 @@ function exactTools(expected: readonly string[], available: readonly string[], a
   }
   const expectedSet = new Set(expected);
   if (active.length !== expectedSet.size || active.some((tool) => !expectedSet.has(tool))) {
-    throw new Error(`child active tools do not match Definition allowlist (expected: ${expected.join(", ") || "<none>"}; active: ${active.join(", ") || "<none>"})`);
+    throw new Error(`child active tools do not match definition allowlist (expected: ${expected.join(", ") || "<none>"}; active: ${active.join(", ") || "<none>"})`);
   }
+}
+
+export function resolveSubagentModelConfig(
+  definition: AgentDefinition,
+  creatorModel: unknown,
+  modelRuntime: ModelRuntimeLike,
+  defaultThinking: ThinkingLevel | undefined,
+): { model: unknown; thinking: ThinkingLevel } {
+  let model: unknown;
+  if (definition.model) {
+    model = modelRuntime.getModel(definition.model.provider, definition.model.modelId);
+    if (!model) throw new Error(`Model ${definition.model.reference} for subagent ${definition.name} is unavailable at invocation time`);
+  } else {
+    model = creatorModel;
+    if (!model) throw new Error("Unable to inherit model from subagent creator: creator has no model configured");
+  }
+  return {
+    model,
+    thinking: definition.thinking ?? defaultThinking ?? "medium",
+  };
+}
+
+function modelReference(model: unknown): string {
+  if (typeof model !== "object" || model === null) return String(model ?? "unknown");
+  const value = model as { provider?: unknown; id?: unknown; modelId?: unknown };
+  const id = typeof value.id === "string" ? value.id : typeof value.modelId === "string" ? value.modelId : undefined;
+  return typeof value.provider === "string" && id ? `${value.provider}/${id}` : id ?? "unknown";
 }
 
 export class PiChildRuntimeFactory implements ChildRuntimeFactory {
@@ -114,12 +138,17 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     this.sdk = sdk;
   }
 
-  async start(invocation: ChildInvocation): Promise<ChildRun> {
+  async start(invocation: SubagentInvocation): Promise<SubagentRun> {
+    const systemPromptMode = invocation.definition.systemPromptMode ?? "append";
+    const roleBlock = systemPromptMode === "append" ? subagentRoleBlock(invocation.definition.body) : undefined;
     const lifecycleExtension: InlineExtension = {
       name: "cooperate-structured-scope",
       hidden: true,
       factory: (pi) => {
         invocation.onContinuationHost?.(createPiContinuationHost(pi));
+        if (systemPromptMode === "override") {
+          pi.on("before_agent_start", () => ({ systemPrompt: invocation.definition.body }));
+        }
         pi.on("agent_end", async (event) => {
           if (!invocation.onAgentEnd) return;
           const failure = terminalFailure(event.messages, 0);
@@ -133,27 +162,29 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       cwd: invocation.cwd,
       agentDir: invocation.agentDir,
       resourceLoaderOptions: {
-        appendSystemPromptOverride: (base) => [
-          invocation.callerCatalog.discovery,
-          ...base,
-          invocation.definition.body,
-        ],
+        appendSystemPromptOverride: (base) => systemPromptMode === "override"
+          ? base
+          : [
+              invocation.callerCatalog.discovery,
+              ...base,
+              ...(roleBlock ? [roleBlock] : []),
+            ],
         extensionFactories: [lifecycleExtension],
       },
     });
-    const resolved = resolveInvocationSettings(
+    const modelConfig = resolveSubagentModelConfig(
       invocation.definition,
       invocation.creatorModel,
       services.modelRuntime,
       services.settingsManager.getDefaultThinkingLevel(),
     );
-    if (!invocation.record.native) throw new Error("child Session record has no native SessionManager");
+    if (!invocation.record.native) throw new Error("child session record has no native SessionManager");
 
     const created = await this.sdk.createSession({
       services,
       sessionManager: invocation.record.native,
-      model: resolved.model,
-      thinkingLevel: resolved.thinking,
+      model: modelConfig.model,
+      thinkingLevel: modelConfig.thinking,
       tools: [...invocation.definition.tools],
       customTools: invocation.definition.tools.includes("subagent")
         ? [(invocation.subagentTool as ToolDefinition | undefined) ?? createSubagentDiscoveryTool(invocation.callerCatalog)]
@@ -176,8 +207,8 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     const startIndex = session.messages.length;
     let disposed = false;
     return {
-      model: invocation.definition.model?.reference ?? modelReference(resolved.model),
-      thinking: resolved.thinking,
+      model: invocation.definition.model?.reference ?? modelReference(modelConfig.model),
+      thinking: modelConfig.thinking,
       prompt: async (task) => {
         await session.prompt(task);
         const failure = terminalFailure(session.messages, startIndex);

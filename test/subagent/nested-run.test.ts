@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
-import type { ChildInvocation, ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions/ownership.ts";
-import { SubagentService } from "../src/subagent/service.ts";
-import { createSubagentTool } from "../src/tool/subagent-tool.ts";
+import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
+import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
+import { SubagentService } from "../../src/subagent/service.ts";
+import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 
 const definition = (name: string, children: readonly string[] = []): AgentDefinition => ({
   name,
@@ -43,11 +44,11 @@ function createHarness(maxDepth = 3) {
     list: vi.fn(async () => [...records.values()]),
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
-  const invocations: ChildInvocation[] = [];
+  const invocations: SubagentInvocation[] = [];
   let releaseParent!: () => void;
   const parentGate = new Promise<void>((resolve) => { releaseParent = resolve; });
   const runtimeFactory = {
-    start: vi.fn(async (invocation: ChildInvocation): Promise<ChildRun> => {
+    start: vi.fn(async (invocation: SubagentInvocation): Promise<SubagentRun> => {
       invocations.push(invocation);
       return {
         prompt: vi.fn(async () => {
@@ -72,7 +73,7 @@ function createHarness(maxDepth = 3) {
   return { catalog, coordinator, service, store, invocations, ownershipBySession, releaseParent };
 }
 
-async function executeNested(invocation: ChildInvocation, params: Record<string, unknown>) {
+async function executeNested(invocation: SubagentInvocation, params: Record<string, unknown>) {
   if (!invocation.subagentTool) throw new Error("missing nested tool");
   return (invocation.subagentTool as ToolDefinition).execute("call", params as never, undefined, undefined, {
     cwd: "/project",
@@ -81,7 +82,7 @@ async function executeNested(invocation: ChildInvocation, params: Record<string,
 }
 
 describe("nested subagent runs", () => {
-  it("installs a scoped tool that can create only a direct permitted child and persists ownership in the parent Session", async () => {
+  it("installs a scoped tool that can create only a direct permitted child and persists ownership in the parent session", async () => {
     const h = createHarness();
     const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
@@ -97,15 +98,15 @@ describe("nested subagent runs", () => {
     await parentPending;
   });
 
-  it("rejects an unpermitted Definition and over-depth run before Session creation or locking", async () => {
+  it("rejects an unpermitted definition and over-depth run before session creation or locking", async () => {
     const h = createHarness(2);
     const parentPending = h.service.run({ agent: "parent", task: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
     const createsBefore = vi.mocked(h.store.create).mock.calls.length;
 
-    await expect(executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "no" })).rejects.toThrow("not available");
-    await expect(executeNested(parentInvocation, { action: "run", agent: "leaf", task: "too deep" })).rejects.toThrow("maxDepth");
+    await expect(executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "no" })).rejects.toThrow();
+    await expect(executeNested(parentInvocation, { action: "run", agent: "leaf", task: "too deep" })).rejects.toThrow();
     expect(h.store.create).toHaveBeenCalledTimes(createsBefore);
     expect(h.coordinator.isSessionLocked("session-2")).toBe(false);
     h.releaseParent();

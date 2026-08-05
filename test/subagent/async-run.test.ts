@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
-import type { CompletionNotice, ContinuationHost } from "../src/continuation.ts";
-import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
-import { SubagentService } from "../src/subagent/service.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
+import type { CompletionNotice, ContinuationHost } from "../../src/continuation.ts";
+import type { SubagentRun } from "../../src/runtime/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import { SubagentService } from "../../src/subagent/service.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -32,7 +33,7 @@ function harness() {
     list: vi.fn(async () => records),
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
-  const run: ChildRun = {
+  const run: SubagentRun = {
     prompt: vi.fn(() => promptGate.promise),
     abort: vi.fn(() => promptGate.resolve()),
     dispose: vi.fn(async () => undefined),

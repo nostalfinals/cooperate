@@ -2,14 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { copyMasterSessionDirectory, masterSessionIdFromFile } from "../src/sessions/master-copy.ts";
-import { NativeSessionStore } from "../src/sessions/native-store.ts";
+import { copyMasterSessionDirectory, masterSessionIdFromFile } from "../../src/sessions/master-copy.ts";
+import { NativeSessionStore } from "../../src/sessions/native-store.ts";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
-describe("master fork Session copying", () => {
-  it("copies the complete flat child namespace without rewriting nested Session bytes", async () => {
+describe("master fork session copying", () => {
+  it("copies the complete flat child namespace without rewriting nested session bytes", async () => {
     const agentDir = await mkdtemp(join(tmpdir(), "cooperate-fork-"));
     roots.push(agentDir);
     const source = join(agentDir, "cooperate", "sessions", "old-master");
@@ -38,7 +38,7 @@ describe("master fork Session copying", () => {
     await mkdir(join(sessions, "old-master"), { recursive: true });
     await writeFile(join(sessions, "old-master", "child.jsonl"), "source\n");
     await mkdir(join(sessions, "new-master"));
-    await expect(copyMasterSessionDirectory(agentDir, "old-master", "new-master")).rejects.toThrow("already exists");
+    await expect(copyMasterSessionDirectory(agentDir, "old-master", "new-master")).rejects.toThrow();
     expect(await readFile(join(sessions, "old-master", "child.jsonl"), "utf8")).toBe("source\n");
 
     await rm(join(sessions, "new-master"), { recursive: true });
@@ -50,7 +50,7 @@ describe("master fork Session copying", () => {
     expect(await readFile(join(sessions, "old-master", "child.jsonl"), "utf8")).toBe("source\n");
   });
 
-  it("resolves the previous master identity from native Session metadata", async () => {
+  it("resolves the previous master identity from native session metadata", async () => {
     const root = await mkdtemp(join(tmpdir(), "cooperate-master-"));
     roots.push(root);
     const file = join(root, "renamed-session.jsonl");

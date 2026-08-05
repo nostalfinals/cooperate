@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { StructuredCoordinator } from "../src/subagent/coordinator.ts";
+import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 
 describe("aggregate Working lifecycle", () => {
   it("keeps the root scope pending until an asynchronous descendant's complete subtree settles", async () => {

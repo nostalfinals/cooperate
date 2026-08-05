@@ -19,7 +19,7 @@ async function exists(path: string): Promise<boolean> {
 
 function assertValidSessionId(id: string): void {
   if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(id)) {
-    throw new Error(`Invalid Session id: ${id}`);
+    throw new Error(`Invalid session id: ${id}`);
   }
 }
 
@@ -41,7 +41,7 @@ export async function copyMasterSessionDirectory(
   const source = resolve(root, sourceMasterId);
   const destination = resolve(root, destinationMasterId);
   if (await exists(destination)) {
-    throw new Error(`Cooperate Session destination already exists: ${destination}`);
+    throw new Error(`Cooperate session destination already exists: ${destination}`);
   }
   // A master with no children has no namespace to copy.
   if (!(await exists(source))) return;
@@ -51,12 +51,12 @@ export async function copyMasterSessionDirectory(
     root,
     options.stagingName ?? `.copy-${destinationMasterId}-${randomBytes(6).toString("hex")}`,
   );
-  if (await exists(staging)) throw new Error(`Cooperate Session staging destination already exists: ${staging}`);
+  if (await exists(staging)) throw new Error(`Cooperate session staging destination already exists: ${staging}`);
   const copy = options.copy ?? ((from, to) => cp(from, to, { recursive: true, errorOnExist: true, force: false }));
   try {
     await copy(source, staging);
     if (await exists(destination)) {
-      throw new Error(`Cooperate Session destination already exists: ${destination}`);
+      throw new Error(`Cooperate session destination already exists: ${destination}`);
     }
     await rename(staging, destination);
   } catch (error) {

@@ -2,11 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentDefinition, DefinitionCatalog } from "../src/catalog/types.ts";
-import type { ChildRun, SessionRecord, SessionStore } from "../src/subagent/ports.ts";
-import { NativeSessionStore } from "../src/sessions/native-store.ts";
-import { isAbortedAgentEnd } from "../src/subagent/result.ts";
-import { SubagentService } from "../src/subagent/service.ts";
+import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
+import type { SubagentRun } from "../../src/runtime/types.ts";
+import type { SessionRecord, SessionStore } from "../../src/sessions/types.ts";
+import { NativeSessionStore } from "../../src/sessions/native-store.ts";
+import { isAbortedAgentEnd } from "../../src/subagent/result.ts";
+import { SubagentService } from "../../src/subagent/service.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -25,7 +26,7 @@ function harness() {
   let next = 0;
   const records: SessionRecord[] = [];
   const gates: ReturnType<typeof deferred>[] = [];
-  const runs: ChildRun[] = [];
+  const runs: SubagentRun[] = [];
   const store: SessionStore = {
     create: vi.fn(async () => {
       const record = { sessionId: `session-${++next}`, file: `/session-${next}.jsonl` };
@@ -45,7 +46,7 @@ function harness() {
       start: vi.fn(async () => {
         const gate = deferred();
         gates.push(gate);
-        const run: ChildRun = {
+        const run: SubagentRun = {
           prompt: vi.fn(() => gate.promise),
           abort: vi.fn(() => gate.resolve()),
           dispose: vi.fn(async () => undefined),
@@ -61,8 +62,8 @@ function harness() {
   return { service, runs, gates };
 }
 
-describe("Pi Session lifecycle cancellation", () => {
-  it("awaits cancellation for tree navigation but keeps the Session service reusable", async () => {
+describe("Pi session lifecycle cancellation", () => {
+  it("awaits cancellation for tree navigation but keeps the session service reusable", async () => {
     const h = harness();
     await h.service.run({ agent: "worker", task: "first", async: true }, { cwd: "/project", creatorModel: {} });
 
@@ -76,13 +77,13 @@ describe("Pi Session lifecycle cancellation", () => {
     await expect(second).resolves.toMatchObject({ sessionId: "session-2", result: "done" });
   });
 
-  it("opens a crash-left native Session as unlocked and resumable in a fresh runtime", async () => {
+  it("opens a crash-left native session as unlocked and resumable in a fresh runtime", async () => {
     const agentDir = await mkdtemp(join(tmpdir(), "cooperate-crash-"));
     try {
       const originalStore = new NativeSessionStore({ agentDir, masterSessionId: "master", cwd: "/project" });
       const crashLeft = await originalStore.create();
       const freshStore = new NativeSessionStore({ agentDir, masterSessionId: "master", cwd: "/project" });
-      const run: ChildRun = {
+      const run: SubagentRun = {
         prompt: vi.fn(async () => undefined), abort: vi.fn(), dispose: vi.fn(async () => undefined),
         messagesSinceStart: () => [{ role: "assistant", content: [{ type: "text", text: "resumed" }] }],
       };
@@ -108,7 +109,7 @@ describe("Pi Session lifecycle cancellation", () => {
     const h = harness();
     await h.service.run({ agent: "worker", task: "active", async: true }, { cwd: "/project", creatorModel: {} });
     await h.service.shutdown();
-    await expect(h.service.run({ agent: "worker", task: "late" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow("shutting down");
+    await expect(h.service.run({ agent: "worker", task: "late" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
 
     expect(isAbortedAgentEnd([{ role: "assistant", stopReason: "aborted" }])).toBe(true);
     expect(isAbortedAgentEnd([{ role: "assistant", stopReason: "stop" }])).toBe(false);

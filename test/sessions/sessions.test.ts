@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { NativeSessionStore } from "../src/sessions/native-store.ts";
-import { OWNERSHIP_ENTRY, ownedSessionIds } from "../src/sessions/ownership.ts";
-import { truncateForTool } from "../src/text.ts";
+import { NativeSessionStore } from "../../src/sessions/native-store.ts";
+import { OWNERSHIP_ENTRY, ownedSessionIds } from "../../src/sessions/ownership.ts";
+import { truncateForTool } from "../../src/text.ts";
 
 const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
-describe("native child Sessions", () => {
+describe("native child sessions", () => {
   it("creates native JSONL in the master namespace and opens it by native ID", async () => {
     const root = await mkdtemp(join(tmpdir(), "cooperate-sessions-"));
     directories.push(root);

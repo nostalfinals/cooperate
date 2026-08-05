@@ -4,7 +4,7 @@ import {
   SessionManager,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionInspection, SessionRecord, SessionStore } from "../subagent/ports.ts";
+import type { SessionInspection, SessionRecord, SessionStore } from "./types.ts";
 import { compactPreview } from "../text.ts";
 
 export interface NativeSessionStoreOptions {
@@ -52,7 +52,7 @@ export class NativeSessionStore implements SessionStore {
   async create(): Promise<SessionRecord> {
     const allocated = SessionManager.create(this.cwd, this.directory);
     const allocatedFile = allocated.getSessionFile();
-    if (!allocatedFile) throw new Error("Pi did not allocate a persistent child Session file");
+    if (!allocatedFile) throw new Error("Pi did not allocate a persistent child session file");
     const file = resolve(allocatedFile);
     // Pi intentionally delays its first write until an assistant response. We
     // persist the native header immediately so startup/auth failures still leave
