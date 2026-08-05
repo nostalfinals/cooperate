@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Private Pi extension for structured subagent delegation",
+  "description": "A clean, minimal subagent implementation for Pi",
   "keywords": [
     "pi-package"
   ],
