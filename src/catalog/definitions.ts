@@ -8,6 +8,8 @@ export type SystemPromptMode = "append" | "override";
 /** Wildcard entry for the `tools` and `subagents` fields: denotes the full set. */
 export const WILDCARD = "*";
 
+export const EXCLUSION_PREFIX = "-";
+
 export interface AgentDefinition {
   name: string;
   description: string;
@@ -121,10 +123,42 @@ function commaSeparatedList(frontmatter: Record<string, unknown>, field: string,
     if (seen.has(entry)) throw new CatalogError(filePath, `${field} contains duplicate entry '${entry}'`);
     seen.add(entry);
   }
-  if (entries.includes(WILDCARD) && entries.length > 1) {
+
+  const hasWildcard = entries.includes(WILDCARD);
+  for (const entry of entries) {
+    if (!isExclusionEntry(entry)) continue;
+    const excluded = exclusionName(entry);
+    if (excluded === undefined) throw new CatalogError(filePath, `${field} contains an empty exclusion`);
+    if (excluded === WILDCARD) throw new CatalogError(filePath, `${field} cannot exclude '${WILDCARD}'`);
+    if (!hasWildcard) throw new CatalogError(filePath, `${field} exclusion '${entry}' requires '${WILDCARD}'`);
+  }
+  if (hasWildcard && entries.some((entry) => entry !== WILDCARD && !isExclusionEntry(entry))) {
     throw new CatalogError(filePath, `${field} cannot combine '${WILDCARD}' with named entries`);
   }
   return entries;
+}
+
+export function isExclusionEntry(entry: string): boolean {
+  return entry.startsWith(EXCLUSION_PREFIX);
+}
+
+export function exclusionName(entry: string): string | undefined {
+  return isExclusionEntry(entry) ? entry.slice(EXCLUSION_PREFIX.length) : undefined;
+}
+
+export function excludedNames(entries: readonly string[]): ReadonlySet<string> {
+  const excluded = new Set<string>();
+  for (const entry of entries) {
+    const name = exclusionName(entry);
+    if (name !== undefined) excluded.add(name);
+  }
+  return excluded;
+}
+
+export function resolveEntries(entries: readonly string[], universe: readonly string[]): string[] {
+  if (!entries.includes(WILDCARD)) return [...entries];
+  const excluded = excludedNames(entries);
+  return universe.filter((name) => !excluded.has(name));
 }
 
 /** Whether the entries are exactly the wildcard, i.e. denote the full set. */
@@ -134,7 +168,8 @@ export function isWildcard(entries: readonly string[]): boolean {
 
 /** Whether the entries include the given entry, with the wildcard implying everything. */
 export function includesEntry(entries: readonly string[], entry: string): boolean {
-  return entries.includes(WILDCARD) || entries.includes(entry);
+  if (entries.includes(entry)) return true;
+  return entries.includes(WILDCARD) && !entries.includes(`${EXCLUSION_PREFIX}${entry}`);
 }
 
 function parseModel(value: string | undefined, filePath: string): DefinitionModel | undefined {

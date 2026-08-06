@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createCompletionMessenger } from "../subagent/messenger.ts";
 import { subagentRoleBlock } from "../prompt.ts";
-import { includesEntry, isWildcard, type AgentDefinition } from "../catalog/definitions.ts";
+import { includesEntry, resolveEntries, WILDCARD, type AgentDefinition } from "../catalog/definitions.ts";
 import type { ChildRuntimeFactory, ModelRuntimeLike, SubagentInvocation, SubagentRun } from "./types.ts";
 
 interface SettingsManagerLike {
@@ -190,13 +190,13 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     );
     if (!invocation.record.native) throw new Error("child session record has no native SessionManager");
 
-    const allTools = isWildcard(invocation.definition.tools);
+    const hasWildcard = invocation.definition.tools.includes(WILDCARD);
     const created = await this.sdk.createSession({
       services,
       sessionManager: invocation.record.native,
       model: modelConfig.model,
       thinkingLevel: modelConfig.thinking,
-      tools: allTools ? undefined : [...invocation.definition.tools],
+      tools: hasWildcard ? undefined : [...invocation.definition.tools],
       customTools: invocation.subagentTool ? [invocation.subagentTool as ToolDefinition] : undefined,
     });
     const { session } = created;
@@ -204,12 +204,15 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
     try {
       await session.bindExtensions({ mode: "print", abortHandler: () => session.abort() });
       const availableTools = session.getAllTools().map((tool) => tool.name);
-      if (allTools) {
+      const expectedTools: string[] = hasWildcard
+        ? resolveEntries(invocation.definition.tools, availableTools)
+        : [...invocation.definition.tools];
+      if (hasWildcard) {
         // A wildcard definition activates every tool available to the child runtime.
-        session.setActiveToolsByName(availableTools);
+        session.setActiveToolsByName(expectedTools);
       }
       exactTools(
-        allTools ? availableTools : invocation.definition.tools,
+        expectedTools,
         availableTools,
         session.getActiveToolNames(),
       );

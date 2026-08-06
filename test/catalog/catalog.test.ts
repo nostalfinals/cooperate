@@ -118,6 +118,9 @@ describe("loadCatalog", () => {
     ["bad model", "---\nname: one\ndescription: One\nmodel: missing-slash\n---\nBody"],
     ["bad thinking", "---\nname: one\ndescription: One\nthinking: extreme\n---\nBody"],
     ["bad system prompt mode", "---\nname: one\ndescription: One\nsystem-prompt-mode: replace\n---\nBody"],
+    ["exclusion without wildcard", "---\nname: one\ndescription: One\ntools: -read\n---\nBody"],
+    ["excluded wildcard", "---\nname: one\ndescription: One\ntools: \"*, -*\"\n---\nBody"],
+    ["empty exclusion", "---\nname: one\ndescription: One\ntools: \"*, -\"\n---\nBody"],
   ])("rejects invalid definitions: %s", async (_label, content) => {
     const { agentDir, options } = await fixture();
     await definition(agentDir, "invalid.md", content);
@@ -131,6 +134,9 @@ describe("loadCatalog", () => {
     ["unknown child", "tools: subagent\nsubagents: missing"],
     ["children without tool", "subagents: scout"],
     ["wildcard children without tool", "subagents: \"*\""],
+    ["excluded unknown tool", "tools: \"*, -missing\""],
+    ["excluded unknown child", "tools: subagent\nsubagents: \"*, -missing\""],
+    ["children without wildcard-excluded subagent tool", "tools: \"*, -subagent\"\nsubagents: \"*, -scout\""],
   ])("rejects unresolved catalog relationships atomically: %s", async (_label, fields) => {
     const { agentDir, options } = await fixture();
     await definition(agentDir, "one.md", `---\nname: one\ndescription: One\n${fields}\n---\nBody`);
@@ -164,6 +170,17 @@ describe("loadCatalog", () => {
 
     expect(catalog.definitions.map((item) => item.name)).toEqual(["scout", "worker"]);
     expect(catalog.definitions[1]).toMatchObject({ tools: ["*"], subagentAgents: ["*"] });
+  });
+
+  it("treats '*' with exclusions as the full set minus the excluded entries", async () => {
+    const { agentDir, options } = await fixture();
+    await definition(agentDir, "scout.md", "---\nname: scout\ndescription: Scout\ntools: read\n---\nScout");
+    await definition(agentDir, "worker.md", "---\nname: worker\ndescription: Worker\ntools: \"*, -bash\"\nsubagents: \"*, -scout\"\n---\nWorker");
+
+    const catalog = await loadCatalog(options);
+
+    expect(catalog.definitions.map((item) => item.name)).toEqual(["scout", "worker"]);
+    expect(catalog.definitions[1]).toMatchObject({ tools: ["*", "-bash"], subagentAgents: ["*", "-scout"] });
   });
 
   it.each([

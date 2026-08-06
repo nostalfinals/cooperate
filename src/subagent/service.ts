@@ -1,5 +1,5 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
-import { includesEntry, isWildcard, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
+import { includesEntry, isWildcard, resolveEntries, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
 import { type CompletionNotice, type Messenger, DeferredMessenger } from "./messenger.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
@@ -113,8 +113,11 @@ export class SubagentService {
     });
     const subagentId = started.subagentId;
     const unrestrictedChildren = isWildcard(definition.subagentAgents);
-    const callerCatalog = createCallerCatalog(this.options.catalog, unrestrictedChildren ? undefined : definition.subagentAgents);
-    const nestedService = this.createNestedService(record, subagentId, definition, unrestrictedChildren);
+    const allowedNames = unrestrictedChildren
+      ? undefined
+      : resolveEntries(definition.subagentAgents, this.options.catalog.definitions.map((item) => item.name));
+    const callerCatalog = createCallerCatalog(this.options.catalog, allowedNames);
+    const nestedService = this.createNestedService(record, subagentId, allowedNames);
     this.childServices.set(subagentId, nestedService);
     const nestedTool = includesEntry(definition.tools, "subagent")
       ? this.options.toolFactory(nestedService, callerCatalog)
@@ -449,15 +452,14 @@ export class SubagentService {
   private createNestedService(
     record: SessionRecord,
     parentId: string,
-    definition: AgentDefinition,
-    unrestrictedChildren: boolean,
+    allowedNames: readonly string[] | undefined,
   ): SubagentService {
     const native = record.native as NativeOwnershipSession | undefined;
     return new SubagentService({
       ...this.options,
       coordinator: this.coordinator,
       parentId,
-      allowedDefinitions: unrestrictedChildren ? undefined : definition.subagentAgents,
+      allowedDefinitions: allowedNames,
       messenger: new DeferredMessenger(),
       persistOwnership: async (sessionId) => {
         native?.appendCustomEntry(OWNERSHIP_ENTRY, { sessionId });

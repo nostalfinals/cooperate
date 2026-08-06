@@ -157,6 +157,38 @@ describe("Pi child runtime adapter", () => {
     expect(session.setActiveToolsByName).toHaveBeenCalledWith(["read", "bash", "extra"]);
   });
 
+  it("activates every available tool except excluded ones when the wildcard carries exclusions", async () => {
+    let sessionOptions: Record<string, unknown> | undefined;
+    let activeToolNames: string[] = [];
+    const session = {
+      messages: [],
+      getAllTools: () => [{ name: "read" }, { name: "bash" }, { name: "extra" }],
+      getActiveToolNames: () => activeToolNames,
+      setActiveToolsByName: vi.fn((names: string[]) => { activeToolNames = [...names]; }),
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createSession: async (input) => {
+        sessionOptions = input as unknown as Record<string, unknown>;
+        return { session, dispose: async () => session.dispose() };
+      },
+    });
+
+    await factory.start({
+      cwd: "/project",
+      definition: { ...baseDefinition, tools: ["*", "-bash"] },
+      callerCatalog: emptyCaller,
+      record: { sessionId: "id", file: "/id", native: {} },
+      creatorModel: {},
+      task: "task",
+    });
+
+    expect(sessionOptions).toMatchObject({ tools: undefined });
+    expect(session.setActiveToolsByName).toHaveBeenCalledWith(["read", "extra"]);
+  });
+
   it("fails the wildcard invocation when activation does not cover every available tool", async () => {
     const session = {
       messages: [],

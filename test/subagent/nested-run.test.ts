@@ -125,6 +125,20 @@ describe("nested subagent runs", () => {
     await parentPending;
   });
 
+  it("excludes named definitions when the wildcard subagents allowlist carries exclusions", async () => {
+    const h = createHarness(3, ["*", "-forbidden"]);
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+    const parentInvocation = h.invocations[0]!;
+    expect(parentInvocation.callerCatalog.definitions.map((item) => item.name)).toEqual(["parent", "leaf"]);
+
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
+    expect(h.invocations[1]).toMatchObject({ definition: { name: "leaf" }, task: "leaf task" });
+    await expect(executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "no", prompt: "no" })).rejects.toThrow();
+    h.releaseParent();
+    await parentPending;
+  });
+
   it("rejects an unpermitted definition and over-depth run before session creation or locking", async () => {
     const h = createHarness(2);
     const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
