@@ -15,7 +15,7 @@ const definition = (name = "worker"): AgentDefinition => ({
 });
 
 const catalog: DefinitionCatalog = {
-  config: { maxDepth: 3, gcOrphanSessions: true },
+  config: { maxDepth: 3, cleanOrphanSessions: true },
   definitions: [definition("worker"), definition("reviewer")],
   configPath: "/config.json",
   definitionsPath: "/defs",

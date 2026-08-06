@@ -2,7 +2,7 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 
 export interface CooperateConfig {
   maxDepth: number;
-  gcOrphanSessions: boolean;
+  cleanOrphanSessions: boolean;
 }
 
 export interface DefinitionModel {

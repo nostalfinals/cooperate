@@ -10,7 +10,7 @@ import { injectDefinitionDiscovery } from "../../src/prompt.ts";
 import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 
 const catalog: DefinitionCatalog = {
-  config: { maxDepth: 3, gcOrphanSessions: true },
+  config: { maxDepth: 3, cleanOrphanSessions: true },
   definitions: [
     { name: "worker", description: "General work", tools: ["read"], subagentAgents: ["scout"], body: "Worker body", filePath: "/defs/worker.md" },
     { name: "scout", description: "Search only", tools: [], subagentAgents: [], body: "Scout body", filePath: "/defs/scout.md" },

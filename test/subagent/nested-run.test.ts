@@ -19,7 +19,7 @@ const definition = (name: string, children: readonly string[] = []): AgentDefini
 
 function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"]) {
   const catalog: DefinitionCatalog = {
-    config: { maxDepth, gcOrphanSessions: true },
+    config: { maxDepth, cleanOrphanSessions: true },
     definitions: [definition("parent", parentChildren), definition("leaf"), definition("forbidden")],
     configPath: "/config.json",
     definitionsPath: "/defs",

@@ -43,7 +43,7 @@ describe("loadCatalog", () => {
 
     const catalog = await loadCatalog(options);
 
-    expect(catalog.config).toEqual({ maxDepth: 3, gcOrphanSessions: true });
+    expect(catalog.config).toEqual({ maxDepth: 3, cleanOrphanSessions: true });
     expect(catalog.definitions).toEqual([]);
   });
 
@@ -52,7 +52,7 @@ describe("loadCatalog", () => {
     await mkdir(join(agentDir, "cooperate"), { recursive: true });
     await writeFile(
       join(agentDir, "cooperate", "config.json"),
-      JSON.stringify({ maxDepth: 4, gcOrphanSessions: false }),
+      JSON.stringify({ maxDepth: 4, cleanOrphanSessions: false }),
     );
     await definition(
       agentDir,
@@ -67,7 +67,7 @@ describe("loadCatalog", () => {
 
     const catalog = await loadCatalog(options);
 
-    expect(catalog.config).toEqual({ maxDepth: 4, gcOrphanSessions: false });
+    expect(catalog.config).toEqual({ maxDepth: 4, cleanOrphanSessions: false });
     expect(catalog.definitions.map((item) => item.name)).toEqual(["scout", "worker"]);
     expect(catalog.definitions[1]).toMatchObject({
       name: "worker",
@@ -82,13 +82,13 @@ describe("loadCatalog", () => {
   });
 
   it.each([
-    ["unknown field", { maxDepth: 3, gcOrphanSessions: true, extra: true }],
+    ["unknown field", { maxDepth: 3, cleanOrphanSessions: true, extra: true }],
     ["non-object", []],
-    ["low depth", { maxDepth: 0, gcOrphanSessions: true }],
-    ["fractional depth", { maxDepth: 1.5, gcOrphanSessions: true }],
-    ["null depth", { maxDepth: null, gcOrphanSessions: true }],
-    ["wrong GC type", { maxDepth: 3, gcOrphanSessions: "yes" }],
-    ["null GC", { maxDepth: 3, gcOrphanSessions: null }],
+    ["low depth", { maxDepth: 0, cleanOrphanSessions: true }],
+    ["fractional depth", { maxDepth: 1.5, cleanOrphanSessions: true }],
+    ["null depth", { maxDepth: null, cleanOrphanSessions: true }],
+    ["wrong cleanup type", { maxDepth: 3, cleanOrphanSessions: "yes" }],
+    ["null cleanup", { maxDepth: 3, cleanOrphanSessions: null }],
   ])("rejects invalid configuration: %s", async (_label, value) => {
     const { agentDir, options } = await fixture();
     await mkdir(join(agentDir, "cooperate"), { recursive: true });

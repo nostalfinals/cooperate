@@ -120,7 +120,7 @@ async function systemTrash(path: string): Promise<boolean> {
 }
 
 /** Remove namespaces whose owning native master session was deleted. */
-export async function garbageCollectOrphanSessions(
+export async function cleanOrphanSessions(
   agentDir: string,
   existingMasterIds: ReadonlySet<string>,
   options: OrphanCleanupOptions = {},

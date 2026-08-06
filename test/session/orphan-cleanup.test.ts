@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectMasterSessionIds,
-  garbageCollectOrphanSessions,
+  cleanOrphanSessions,
   selectOrphanSessionDirectories,
-} from "../../src/session/orphan-gc.ts";
+} from "../../src/session/orphan-cleanup.ts";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
@@ -17,7 +17,7 @@ async function present(path: string): Promise<boolean> {
 
 describe("orphan master session cleanup", () => {
   it("selects only complete namespaces whose master session no longer exists", async () => {
-    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-cleanup-"));
     roots.push(agentDir);
     const masters = join(agentDir, "sessions", "--project--");
     await mkdir(masters, { recursive: true });
@@ -37,7 +37,7 @@ describe("orphan master session cleanup", () => {
   });
 
   it("uses trash when available and recursively removes only as a fallback", async () => {
-    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-cleanup-"));
     roots.push(agentDir);
     const root = join(agentDir, "cooperate", "sessions");
     const trashed = join(root, "trash-me");
@@ -48,18 +48,18 @@ describe("orphan master session cleanup", () => {
       await rm(path, { recursive: true });
       return true;
     });
-    await garbageCollectOrphanSessions(agentDir, new Set(), { trash });
+    await cleanOrphanSessions(agentDir, new Set(), { trash });
     expect(trash).toHaveBeenCalledWith(trashed);
     expect(await present(trashed)).toBe(false);
 
     await mkdir(fallback, { recursive: true });
     await writeFile(join(fallback, "child"), "bytes");
-    await garbageCollectOrphanSessions(agentDir, new Set(), { trash: async () => false });
+    await cleanOrphanSessions(agentDir, new Set(), { trash: async () => false });
     expect(await present(fallback)).toBe(false);
   });
 
   it("aborts removals when shouldProceed turns false", async () => {
-    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-cleanup-"));
     roots.push(agentDir);
     const root = join(agentDir, "cooperate", "sessions");
     const first = join(root, "first");
@@ -71,7 +71,7 @@ describe("orphan master session cleanup", () => {
       return true;
     });
     let checks = 0;
-    await garbageCollectOrphanSessions(agentDir, new Set(), {
+    await cleanOrphanSessions(agentDir, new Set(), {
       trash,
       shouldProceed: () => ++checks <= 1,
     });
@@ -80,7 +80,7 @@ describe("orphan master session cleanup", () => {
   });
 
   it("completes an in-flight removal but starts no new ones after invalidation", async () => {
-    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-cleanup-"));
     roots.push(agentDir);
     const root = join(agentDir, "cooperate", "sessions");
     const first = join(root, "first");
@@ -101,7 +101,7 @@ describe("orphan master session cleanup", () => {
       await rm(path, { recursive: true });
       return true;
     });
-    const run = garbageCollectOrphanSessions(agentDir, new Set(), {
+    const run = cleanOrphanSessions(agentDir, new Set(), {
       trash,
       shouldProceed: () => proceed,
     });
@@ -116,7 +116,7 @@ describe("orphan master session cleanup", () => {
   });
 
   it("does not collect a fork source before the copied destination is established", async () => {
-    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-gc-"));
+    const agentDir = await mkdtemp(join(tmpdir(), "cooperate-cleanup-"));
     roots.push(agentDir);
     const source = join(agentDir, "cooperate", "sessions", "source-master");
     await mkdir(source, { recursive: true });
@@ -124,7 +124,7 @@ describe("orphan master session cleanup", () => {
     const { copyMasterSessionDirectory } = await import("../../src/session/master-copy.ts");
 
     await copyMasterSessionDirectory(agentDir, "source-master", "fork-master", { stagingName: ".copy-stage" });
-    await garbageCollectOrphanSessions(agentDir, new Set(["fork-master"]), { trash: async () => false });
+    await cleanOrphanSessions(agentDir, new Set(["fork-master"]), { trash: async () => false });
 
     expect(await readFile(join(agentDir, "cooperate", "sessions", "fork-master", "child.jsonl"), "utf8")).toBe("source bytes\n");
     expect(await present(source)).toBe(false);

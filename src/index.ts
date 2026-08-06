@@ -18,7 +18,7 @@ import { setToolDefinitionProvider } from "./tool/activity-title.ts";
 import { renderCompletionMessage } from "./ui/presentation.ts";
 import { SubagentsPanel } from "./ui/panel/subagents-panel.ts";
 import { copyMasterSessionDirectory, masterSessionIdFromFile } from "./session/master-copy.ts";
-import { collectMasterSessionIds, garbageCollectOrphanSessions } from "./session/orphan-gc.ts";
+import { collectMasterSessionIds, cleanOrphanSessions } from "./session/orphan-cleanup.ts";
 
 export interface CooperateExtensionOptions {
   agentDir?: string;
@@ -50,7 +50,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     let state: SessionCatalogState | undefined;
     let sessionGeneration = 0;
     const messenger = createCompletionMessenger(pi);
-    const runOrphanSessionGc = async (options: {
+    const runOrphanSessionCleanup = async (options: {
       agentDir: string;
       sessionDir: string;
       masterSessionId: string;
@@ -60,15 +60,15 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         const existingMasterIds = await collectMasterSessionIds(options.agentDir, [options.sessionDir]);
         if (options.generation !== sessionGeneration) return;
         existingMasterIds.add(options.masterSessionId);
-        await garbageCollectOrphanSessions(options.agentDir, existingMasterIds, {
+        await cleanOrphanSessions(options.agentDir, existingMasterIds, {
           // Drop stale runs before they delete anything: session replacement
           // bumps sessionGeneration, and the synchronous per-path check cannot
           // race a fork copy that creates a fresh namespace.
           shouldProceed: () => options.generation === sessionGeneration,
         });
       } catch (error) {
-        // Orphan GC is best-effort housekeeping; never fail session startup.
-        console.error("[cooperate] orphan session GC failed:", error);
+        // Orphan cleanup is best-effort housekeeping; never fail session startup.
+        console.error("[cooperate] orphan session cleanup failed:", error);
       }
     };
     pi.registerMessageRenderer(COMPLETION_MESSAGE, renderCompletionMessage);
@@ -116,7 +116,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
       state = undefined;
 
       // Snapshot session-bound values before yielding. Session replacement may
-      // invalidate ctx while catalog loading, namespace copying, or GC is pending.
+      // invalidate ctx while catalog loading, namespace copying, or cleanup is pending.
       const availableTools = new Set([...pi.getAllTools().map((tool) => tool.name), "subagent"]);
       const modelRegistry = ctx.modelRegistry;
       const sessionManager = ctx.sessionManager;
@@ -138,11 +138,11 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         );
         if (generation !== sessionGeneration) return;
       }
-      if (catalog.config.gcOrphanSessions) {
+      if (catalog.config.cleanOrphanSessions) {
         // Best-effort housekeeping: run in the background so session startup
         // (and the "New session started" indicator) is not delayed by scanning
         // Pi's session store. Nothing in the new session depends on its result.
-        void runOrphanSessionGc({ agentDir, sessionDir, masterSessionId, generation });
+        void runOrphanSessionCleanup({ agentDir, sessionDir, masterSessionId, generation });
       }
       const store = new NativeSessionStore({
         agentDir,

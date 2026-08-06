@@ -15,7 +15,7 @@ const worker: AgentDefinition = {
   name: "worker", description: "work", tools: [], subagentAgents: [], body: "work", filePath: "/worker.md",
 };
 const catalog: DefinitionCatalog = {
-  config: { maxDepth: 3, gcOrphanSessions: true }, definitions: [worker], configPath: "/config", definitionsPath: "/defs",
+  config: { maxDepth: 3, cleanOrphanSessions: true }, definitions: [worker], configPath: "/config", definitionsPath: "/defs",
 };
 
 function harness() {

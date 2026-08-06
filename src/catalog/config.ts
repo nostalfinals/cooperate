@@ -3,10 +3,10 @@ import { CatalogError, type CooperateConfig } from "./types.ts";
 
 export const DEFAULT_CONFIG = Object.freeze({
   maxDepth: 3,
-  gcOrphanSessions: true,
+  cleanOrphanSessions: true,
 });
 
-const CONFIG_FIELDS = new Set(["maxDepth", "gcOrphanSessions"]);
+const CONFIG_FIELDS = new Set(["maxDepth", "cleanOrphanSessions"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -46,12 +46,12 @@ export async function loadConfig(configPath: string): Promise<CooperateConfig> {
     throw new CatalogError(configPath, "maxDepth must be an integer of at least 1");
   }
 
-  const gcOrphanSessions = Object.hasOwn(value, "gcOrphanSessions")
-    ? value.gcOrphanSessions
-    : DEFAULT_CONFIG.gcOrphanSessions;
-  if (typeof gcOrphanSessions !== "boolean") {
-    throw new CatalogError(configPath, "gcOrphanSessions must be a boolean");
+  const cleanOrphanSessions = Object.hasOwn(value, "cleanOrphanSessions")
+    ? value.cleanOrphanSessions
+    : DEFAULT_CONFIG.cleanOrphanSessions;
+  if (typeof cleanOrphanSessions !== "boolean") {
+    throw new CatalogError(configPath, "cleanOrphanSessions must be a boolean");
   }
 
-  return { maxDepth: maxDepth as number, gcOrphanSessions };
+  return { maxDepth: maxDepth as number, cleanOrphanSessions };
 }
