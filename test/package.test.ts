@@ -60,11 +60,14 @@ describe("Pi package metadata", () => {
     expect(pi.registerTool).toHaveBeenCalledOnce();
     const tool = pi.registerTool.mock.calls[0][0] as {
       name: string;
-      parameters: { type?: string; anyOf: Array<{ properties: { action: { const: string } } }> };
+      parameters: {
+        type?: string;
+        properties: { action: { enum?: string[] } };
+      };
     };
     expect(tool.name).toBe("subagent");
     expect(tool.parameters.type).toBe("object");
-    expect(tool.parameters.anyOf.map((shape) => shape.properties.action.const)).toEqual([
+    expect(tool.parameters.properties.action.enum).toEqual([
       "run", "list-definitions", "list-subagents", "list-sessions", "wait", "cancel",
     ]);
 

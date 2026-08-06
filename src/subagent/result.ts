@@ -10,6 +10,10 @@ export function isAbortedAgentEnd(messages: readonly unknown[]): boolean {
   return false;
 }
 
+export function completionTitle(agent: string, state: "finished" | "failed" | "cancelled", subagentId: string, sessionId: string): string {
+  return `Subagent ${agent} ${state} (subagentId=${subagentId}, sessionId=${sessionId})`;
+}
+
 export function extractFinalText(messages: readonly unknown[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];

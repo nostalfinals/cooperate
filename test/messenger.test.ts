@@ -15,7 +15,7 @@ function fakePi() {
   return { pi, emit };
 }
 
-const notice = (agent: string) => ({ agent, state: "finished" as const, sessionId: `session-${agent}`, result: `${agent} result`, elapsedMs: 10 });
+const notice = (agent: string) => ({ agent, state: "finished" as const, subagentId: `id-${agent}`, sessionId: `session-${agent}`, result: `${agent} result`, elapsedMs: 10 });
 
 describe("parent messenger delivery", () => {
   it("uses steer before logical end, followUp while agent_end is waiting, and keeps simultaneous completions independent", async () => {

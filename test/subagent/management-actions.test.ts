@@ -84,8 +84,8 @@ describe("direct child management actions", () => {
   it("dispatches wait and cancel through the complete public tool schema", async () => {
     const h = harness();
     const tool = createSubagentTool(h.service, createCallerCatalog(catalog));
-    const schema = tool.parameters as { anyOf: Array<{ properties: { action: { const: string } } }> };
-    expect(schema.anyOf.map((entry) => entry.properties.action.const)).toEqual(expect.arrayContaining(["wait", "cancel"]));
+    const schema = tool.parameters as { properties: { action: { enum?: string[] } } };
+    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["wait", "cancel"]));
     const started = await h.service.run({ agent: "worker", task: "long", prompt: "long", async: true }, { cwd: "/", creatorModel: {} });
     const cancel = await tool.execute("cancel-call", { action: "cancel", subagentId: started.subagentId } as never, undefined, undefined, { cwd: "/" } as never);
     expect(cancel.content).toEqual([]);

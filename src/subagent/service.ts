@@ -8,7 +8,7 @@ import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
 import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
-import { extractFinalText } from "./result.ts";
+import { completionTitle, extractFinalText } from "./result.ts";
 import type { RunEnvironment, RunRequest, RunResponse, SubagentActivity, SubagentSnapshot, TerminalCause } from "./types.ts";
 
 export interface SubagentServiceOptions {
@@ -193,7 +193,7 @@ export class SubagentService {
       return {
         sessionId: record.sessionId,
         subagentId,
-        result: `started ${subagentId}\nsession ${record.sessionId}`,
+        result: `Started background subagent ${request.agent} (subagentId=${subagentId}, sessionId=${record.sessionId})`,
       };
     }
 
@@ -206,7 +206,11 @@ export class SubagentService {
     if (outcome.error || outcome.snapshot.state !== "finished") {
       throw new Error(`Session ${record.sessionId}: ${outcome.error?.message ?? outcome.snapshot.reason ?? outcome.snapshot.state}`, { cause: outcome.error });
     }
-    return { sessionId: record.sessionId, result: outcome.result ?? "<none>" };
+    return {
+      sessionId: record.sessionId,
+      subagentId,
+      result: `${completionTitle(request.agent, "finished", subagentId, record.sessionId)}\n\n${outcome.result ?? "<none>"}`,
+    };
   }
 
   listSubagents(): readonly Record<string, unknown>[] {
@@ -431,6 +435,7 @@ export class SubagentService {
     const notice: CompletionNotice = {
       agent: snapshot.agent,
       state: snapshot.state,
+      subagentId: snapshot.subagentId,
       sessionId: snapshot.sessionId,
       elapsedMs: snapshot.elapsedMs,
       ...(snapshot.state === "finished"

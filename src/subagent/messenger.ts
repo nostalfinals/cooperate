@@ -1,10 +1,12 @@
 import { truncateHead, truncateTail, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { completionTitle } from "./result.ts";
 
 export const COMPLETION_MESSAGE = "subagent";
 
 export interface CompletionNotice {
   agent: string;
   state: "finished" | "failed" | "cancelled";
+  subagentId: string;
   sessionId: string;
   result?: string;
   reason?: string;
@@ -33,7 +35,7 @@ function bounded(value: string): string {
 }
 
 function completionContent(notice: CompletionNotice): string {
-  const title = `Subagent ${notice.agent} ${notice.state}.\nSession: ${notice.sessionId}`;
+  const title = completionTitle(notice.agent, notice.state, notice.subagentId, notice.sessionId);
   const content = notice.state === "finished"
     ? `${title}\n\n${notice.result ?? "<none>"}`
     : `${title}\n\n${notice.reason ?? notice.state}`;

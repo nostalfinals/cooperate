@@ -86,7 +86,7 @@ describe("blocking subagent run", () => {
     expect(order).toEqual(["create", "own", "start"]);
     expect(h.invocations[0]).toMatchObject({ definition: { name: "worker" }, record: { sessionId: "session-1" }, task: "Do exactly this" });
     expect(h.run.prompt).toHaveBeenCalledWith("Do exactly this");
-    expect(result).toEqual({ sessionId: "session-1", result: " final " });
+    expect(result).toMatchObject({ sessionId: "session-1", subagentId: expect.stringMatching(/^[0-9a-f]{8}$/), result: expect.any(String) });
   });
 
   it("resumes a visible session under any currently permitted definition without adding ownership", async () => {

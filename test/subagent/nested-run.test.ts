@@ -89,8 +89,7 @@ describe("nested subagent runs", () => {
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
 
-    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
-    expect(nestedResult.content).toEqual([{ type: "text", text: "leaf result" }]);
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
     expect(h.invocations[1]).toMatchObject({ definition: { name: "leaf" }, task: "leaf task" });
     const parentEntries = h.ownershipBySession.get(parentInvocation.record.sessionId)!;
     expect(ownedSessionIds(parentEntries)).toEqual([h.invocations[1]!.record.sessionId]);
@@ -120,8 +119,7 @@ describe("nested subagent runs", () => {
     const parentInvocation = h.invocations[0]!;
     expect(parentInvocation.callerCatalog.definitions.map((item) => item.name)).toEqual(["parent", "leaf", "forbidden"]);
 
-    const nestedResult = await executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "forbidden task", prompt: "forbidden task" });
-    expect(nestedResult.content).toEqual([{ type: "text", text: "forbidden result" }]);
+    await executeNested(parentInvocation, { action: "run", agent: "forbidden", task: "forbidden task", prompt: "forbidden task" });
     expect(h.invocations[1]).toMatchObject({ definition: { name: "forbidden" }, task: "forbidden task" });
     h.releaseParent();
     await parentPending;

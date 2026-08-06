@@ -67,8 +67,7 @@ describe("asynchronous subagent run", () => {
 
     h.commitGate.resolve();
     await vi.waitFor(() => expect(h.notices).toHaveLength(1));
-    expect(h.notices[0]).toMatchObject({ agent: "worker", state: "finished", sessionId: "session-1", result: "done" });
-    expect(h.notices[0]).not.toHaveProperty("subagentId");
+    expect(h.notices[0]).toMatchObject({ agent: "worker", state: "finished", subagentId: started.subagentId, sessionId: "session-1", result: "done" });
   });
 
   it("reports asynchronous failures but suppresses lifecycle-wide cancellation without waiting on an uncommitted startup", async () => {
