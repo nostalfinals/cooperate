@@ -260,7 +260,7 @@ export class SubagentService {
     const [handle] = this.captureDirect([subagentId]);
     handle!.explicitCancel = true;
     handle!.resolveNotificationSuppressed();
-    this.coordinator.requestCancel(subagentId, "explicitly cancelled");
+    this.coordinator.requestCancel(subagentId, "cancelled by user");
     await handle!.done;
     return this.coordinator.snapshotOrLast(subagentId);
   }
@@ -391,7 +391,7 @@ export class SubagentService {
     let cause: TerminalCause = { state: "finished" };
     let result: string | undefined;
     let caught: Error | undefined;
-    const abortFromSignal = () => this.coordinator.requestCancel(subagentId, "caller aborted");
+    const abortFromSignal = () => this.coordinator.requestCancel(subagentId, "invoker was cancelled");
     if (signal?.aborted) abortFromSignal();
     signal?.addEventListener("abort", abortFromSignal, { once: true });
     try {
@@ -437,6 +437,7 @@ export class SubagentService {
       state: snapshot.state,
       subagentId: snapshot.subagentId,
       sessionId: snapshot.sessionId,
+      task: snapshot.task,
       elapsedMs: snapshot.elapsedMs,
       ...(snapshot.state === "finished"
         ? { result: outcome.result ?? "<none>" }

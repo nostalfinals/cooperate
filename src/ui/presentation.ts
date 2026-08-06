@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Box, Text, type Component } from "@earendil-works/pi-tui";
-import type { SubagentSnapshot } from "../subagent/types.ts";
+import { compactPreview } from "../text.ts";
+import type { ActiveSubagentState, SubagentSnapshot, TerminalSubagentState } from "../subagent/types.ts";
 import type { CompletionNotice } from "../subagent/messenger.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -22,9 +23,9 @@ export function snapshotElapsed(snapshot: SubagentSnapshot): number {
     : snapshot.elapsedMs;
 }
 
-export function stateMark(snapshot: SubagentSnapshot, theme: Theme): string {
-  switch (snapshot.state) {
-    case "running": return theme.fg("accent", SPINNER[Math.floor(snapshotElapsed(snapshot) / SPINNER_INTERVAL_MS) % SPINNER.length]!);
+export function stateMark(state: ActiveSubagentState | TerminalSubagentState, theme: Theme, elapsedMs = 0): string {
+  switch (state) {
+    case "running": return theme.fg("accent", SPINNER[Math.floor(elapsedMs / SPINNER_INTERVAL_MS) % SPINNER.length]!);
     case "waiting": return theme.fg("warning", "◌");
     case "finished": return theme.fg("success", "✓");
     case "failed": return theme.fg("error", "×");
@@ -39,25 +40,26 @@ export function renderCompletionMessage(
 ): Component {
   const box = new Box(options.outputPad, 1, (text) => theme.bg("customMessageBg", text));
   const notice = message.details;
-  const title = theme.fg("customMessageLabel", theme.bold("[subagent]"));
   if (!notice) {
     const content = typeof message.content === "string"
       ? message.content
       : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
-    box.addChild(new Text(`${title}\n${theme.fg("customMessageText", content)}`, 0, 0));
+    box.addChild(new Text(`${theme.fg("customMessageLabel", theme.bold("[subagent]"))}\n${theme.fg("customMessageText", content)}`, 0, 0));
     return box;
   }
 
-  const stateColor = notice.state === "finished" ? "success" : notice.state === "failed" ? "error" : "warning";
-  let text = title + "\n"
-    + theme.fg("customMessageText", "Subagent ")
-    + theme.fg("accent", notice.agent) + " "
-    + theme.fg(stateColor, notice.state)
-    + theme.fg("muted", " (ctrl+o to expand)");
-  if (options.expanded) {
-    const body = notice.state === "finished" ? notice.result ?? "<none>" : notice.reason ?? notice.state;
-    text += `\n\n${theme.fg("customMessageText", body)}`;
-    text += "\n" + theme.fg("muted", `session: ${notice.sessionId} · ${formatElapsed(notice.elapsedMs)}`);
+  let text = stateMark(notice.state, theme) + " " + theme.fg("accent", notice.agent)
+    + theme.fg("muted", ` · ${formatElapsed(notice.elapsedMs)}`);
+  if (notice.task) text += theme.fg("muted", ` · ${compactPreview(notice.task, 80)}`);
+  const expandable = notice.state !== "cancelled"
+    && (notice.state === "failed" || (notice.result !== undefined && notice.result !== "<none>"));
+  if (expandable) {
+    if (options.expanded) {
+      const body = notice.state === "finished" ? notice.result! : (notice.reason ?? notice.state);
+      text += `\n\n${theme.fg("customMessageText", body)}`;
+    } else {
+      text += "\n\n" + theme.fg("muted", "(ctrl+o to expand)");
+    }
   }
   box.addChild(new Text(text, 0, 0));
   return box;

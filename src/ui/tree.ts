@@ -11,7 +11,7 @@ export type ActivityTitleRenderer = (
 ) => string | undefined;
 
 function nodeBody(snapshot: SubagentSnapshot, theme: Theme): string {
-  const mark = stateMark(snapshot, theme);
+  const mark = stateMark(snapshot.state, theme, snapshotElapsed(snapshot));
   return mark + " " + theme.fg("accent", snapshot.agent) + " "
     + theme.fg("muted", `${formatElapsed(snapshotElapsed(snapshot))} · ${compactPreview(snapshot.task, 80)}`);
 }

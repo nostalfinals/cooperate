@@ -196,7 +196,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("session_before_tree", async () => {
-      await state?.service.cancelActive("session tree navigation");
+      await state?.service.cancelActive("message branch switched");
     });
 
     pi.on("session_shutdown", async () => {

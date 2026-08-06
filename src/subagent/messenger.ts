@@ -8,6 +8,7 @@ export interface CompletionNotice {
   state: "finished" | "failed" | "cancelled";
   subagentId: string;
   sessionId: string;
+  task?: string;
   result?: string;
   reason?: string;
   elapsedMs: number;

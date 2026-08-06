@@ -50,7 +50,7 @@ export class DetailView implements PanelView {
   render(width: number): Container {
     const theme = this.ctx.theme;
     const snapshot = this.ctx.detailSnapshot()!;
-    const header = stateMark(snapshot, theme) + " " + theme.fg("accent", snapshot.agent) + " "
+    const header = stateMark(snapshot.state, theme, snapshotElapsed(snapshot)) + " " + theme.fg("accent", snapshot.agent) + " "
       + theme.fg("muted", `${formatElapsed(snapshotElapsed(snapshot))} · ${snapshot.subagentId.slice(0, 7)} · ${snapshot.sessionId}`);
     const rows = this.historyRows(snapshot);
     const lines = [header, "", theme.fg("muted", snapshot.task), ""];
