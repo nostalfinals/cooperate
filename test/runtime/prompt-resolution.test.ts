@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import type { LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition } from "../../src/catalog/definitions.ts";
 import type { CallerCatalog } from "../../src/catalog/types.ts";
@@ -36,7 +38,10 @@ describe("invocation prompt resolution", () => {
 
 describe("Pi child runtime adapter", () => {
   it("loads normal resources, appends the definition role block in the native slot, binds extensions, and activates exact tools", async () => {
-    let resourceOptions: { appendSystemPromptOverride?: (base: string[]) => string[] } | undefined;
+    let resourceOptions: {
+      appendSystemPromptOverride?: (base: string[]) => string[];
+      extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
+    } | undefined;
     let sessionOptions: Record<string, unknown> | undefined;
     const messages: unknown[] = [{ role: "user", content: "history" }];
     const session = {
@@ -74,6 +79,18 @@ describe("Pi child runtime adapter", () => {
     expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual([
       "global", "project", expect.stringContaining("definition body"),
     ]);
+    const ambientPath = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
+    const extensions = [
+      { resolvedPath: ambientPath },
+      { resolvedPath: "/other/extension.ts" },
+      { resolvedPath: "<inline:cooperate-subagent-extension>" },
+    ];
+    const filtered = resourceOptions?.extensionsOverride?.({
+      extensions,
+      errors: [],
+      runtime: {},
+    } as unknown as LoadExtensionsResult);
+    expect(filtered?.extensions).toEqual([extensions[1], extensions[2]]);
     expect(sessionOptions).toMatchObject({ model: { id: "creator" }, thinkingLevel: "low", tools: ["read", "custom"] });
     expect(run).toMatchObject({ model: "creator", thinking: "low" });
     expect(session.bindExtensions).toHaveBeenCalledOnce();

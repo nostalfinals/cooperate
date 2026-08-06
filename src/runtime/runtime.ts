@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import {
@@ -6,6 +8,7 @@ import {
   createAgentSessionServices,
   type AgentSessionServices,
   type InlineExtension,
+  type LoadExtensionsResult,
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -45,6 +48,7 @@ interface RuntimeSdk {
     resourceLoaderOptions: {
       appendSystemPromptOverride: (base: string[]) => string[];
       extensionFactories?: InlineExtension[];
+      extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
     };
   }): Promise<ServicesLike>;
   createSession(options: {
@@ -55,6 +59,19 @@ interface RuntimeSdk {
     tools?: string[];
     customTools?: ToolDefinition[];
   }): Promise<{ session: SessionLike; dispose(): Promise<void> }>;
+}
+
+const cooperatePackageRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+function excludeAmbientCooperate(base: LoadExtensionsResult): LoadExtensionsResult {
+  return {
+    ...base,
+    extensions: base.extensions.filter((extension) => {
+      if (extension.resolvedPath.startsWith("<")) return true;
+      const relativePath = relative(cooperatePackageRoot, resolve(extension.resolvedPath));
+      return relativePath.startsWith("..") || isAbsolute(relativePath);
+    }),
+  };
 }
 
 const defaultSdk: RuntimeSdk = {
@@ -149,7 +166,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       ? [invocation.callerCatalog.discovery]
       : [];
     const lifecycleExtension: InlineExtension = {
-      name: "cooperate-structured-scope",
+      name: "cooperate-subagent-extension",
       hidden: true,
       factory: (pi) => {
         invocation.onMessenger?.(createCompletionMessenger(pi));
@@ -180,6 +197,7 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
               ...(roleBlock ? [roleBlock] : []),
             ],
         extensionFactories: [lifecycleExtension],
+        extensionsOverride: excludeAmbientCooperate,
       },
     });
     const modelConfig = resolveSubagentModelConfig(
