@@ -61,3 +61,7 @@ export interface StartedNode {
   subagentId: string;
   depth: number;
 }
+
+export function isActive(snapshot: SubagentSnapshot): boolean {
+  return snapshot.state === "running" || snapshot.state === "waiting";
+}

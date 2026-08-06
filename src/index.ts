@@ -14,9 +14,9 @@ import { SubagentService } from "./subagent/service.ts";
 import { NativeSessionStore } from "./session/native-store.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "./session/ownership.ts";
 import { createSubagentTool } from "./tool/subagent-tool.ts";
-import { setToolDefinitionProvider } from "./tool/renderer.ts";
+import { setToolDefinitionProvider } from "./tool/activity-title.ts";
 import { renderCompletionMessage } from "./ui/presentation.ts";
-import { SubagentsOverlay } from "./ui/subagents-overlay.ts";
+import { SubagentsPanel } from "./ui/panel/subagents-panel.ts";
 import { copyMasterSessionDirectory, masterSessionIdFromFile } from "./session/master-copy.ts";
 import { collectMasterSessionIds, garbageCollectOrphanSessions } from "./session/orphan-gc.ts";
 
@@ -85,7 +85,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         if (!service) return;
         await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
           const unsubscribe = service.subscribe(() => tui.requestRender());
-          return new SubagentsOverlay({
+          return new SubagentsPanel({
             theme,
             snapshots: () => service.snapshotRoots(),
             snapshotOf: (subagentId) => service.snapshotOf(subagentId),
