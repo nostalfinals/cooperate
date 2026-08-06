@@ -175,38 +175,24 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     pi.on("agent_end", async (event, ctx) => {
       const service = state?.service;
       if (!service) return;
-      if (isAbortedAgentEnd(event.messages)) {
-        await service.cancelActive("main agent interrupted");
+      const reason = "main agent interrupted";
+      if (isAbortedAgentEnd(event.messages) || ctx.signal?.aborted) {
+        await service.cancelActive(reason);
         return;
       }
-      // The loop is parked on this handler while descendants run. esc aborts
-      // the agent signal; racing the wait lets the interrupt release the loop
-      // so Pi returns to idle instead of staying stuck on "Working…".
       const signal = ctx.signal;
-      if (signal?.aborted) {
-        await service.cancelActive("main agent interrupted");
-        return;
-      }
       let interrupted = false;
       const onAbort = () => { interrupted = true; };
       signal?.addEventListener("abort", onAbort, { once: true });
       try {
-        if (!interrupted) {
-          await Promise.race([
-            service.waitForDescendants(),
-            new Promise<void>((resolve) => {
-              if (interrupted) {
-                resolve();
-                return;
-              }
-              signal?.addEventListener("abort", () => resolve(), { once: true });
-            }),
-          ]);
-        }
+        await Promise.race([
+          service.waitForDescendants(),
+          new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true })),
+        ]);
       } finally {
         signal?.removeEventListener("abort", onAbort);
       }
-      if (interrupted) await service.cancelActive("main agent interrupted");
+      if (interrupted) await service.cancelActive(reason);
     });
 
     pi.on("session_before_tree", async () => {

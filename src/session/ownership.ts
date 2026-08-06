@@ -1,4 +1,4 @@
-export const OWNERSHIP_ENTRY = "cooperate.child-session";
+export const OWNERSHIP_ENTRY = "cooperate.subagent-session";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
