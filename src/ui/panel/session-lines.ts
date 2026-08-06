@@ -72,7 +72,8 @@ export function entryDisplayText(entry: SessionTreeNode["entry"], theme: Theme, 
         if (text) return label + text;
         if (message.stopReason === "aborted") return label + theme.fg("muted", "(aborted)");
         if (message.errorMessage) return label + theme.fg("error", normalize(message.errorMessage));
-        return label + theme.fg("muted", "(no content)");
+        // return label + theme.fg("muted", "(no content)");
+        return "";
       }
       if (message.role === "toolResult") {
         const call = toolCalls.get(message.toolCallId);
@@ -86,13 +87,15 @@ export function entryDisplayText(entry: SessionTreeNode["entry"], theme: Theme, 
     case "compaction":
       return theme.fg("borderAccent", `[compaction: ${Math.round(entry.tokensBefore / 1000)}k tokens]`);
     case "custom_message":
-      return theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(extractText(entry.content));
+      // return theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(extractText(entry.content));
+      return "";
     case "model_change":
       return theme.fg("dim", `[model: ${entry.modelId}]`);
     case "thinking_level_change":
       return theme.fg("dim", `[thinking: ${entry.thinkingLevel}]`);
     default:
-      return theme.fg("dim", `[${entry.type}]`);
+      // return theme.fg("dim", `[${entry.type}]`);
+      return ""
   }
 }
 
@@ -100,7 +103,8 @@ export function flattenTree(roots: readonly SessionTreeNode[], theme: Theme, too
   const rows: HistoryRow[] = [];
   const visit = (nodes: readonly SessionTreeNode[]): void => {
     for (const node of nodes) {
-      rows.push({ id: node.entry.id, line: entryDisplayText(node.entry, theme, toolCalls) });
+      const line = entryDisplayText(node.entry, theme, toolCalls);
+      if (line) rows.push({ id: node.entry.id, line });
       visit(node.children);
     }
   };
