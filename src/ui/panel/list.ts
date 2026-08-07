@@ -23,8 +23,14 @@ export class ListView implements PanelView {
       const current = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedId()));
       const step = key(data, "down") ? 1 : -1;
       let index = current + step;
-      while (index >= 0 && index < rows.length && rows[index]!.id === "") index += step;
-      if (index >= 0 && index < rows.length) this.ctx.selectId(rows[index]!.id);
+      while (rows[index] !== undefined && rows[index]!.id === "") index += step;
+      if (rows[index] === undefined) {
+        // Wrapped past the edge: continue from the other end, so up from the
+        // top entry lands on the last selectable row (and vice versa).
+        index = step > 0 ? 0 : rows.length - 1;
+        while (rows[index] !== undefined && rows[index]!.id === "") index += step;
+      }
+      if (rows[index] !== undefined) this.ctx.selectId(rows[index]!.id);
       return;
     }
     if (key(data, "enter") && this.ctx.selectedId()) {

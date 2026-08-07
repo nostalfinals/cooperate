@@ -26,10 +26,21 @@ export class DetailView implements PanelView {
       return;
     }
     if (key(data, "up") || key(data, "down")) {
-      const current = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedEntryId()));
-      const step = key(data, "down") ? 1 : -1;
       if (rows.length > 0) {
-        const index = Math.min(rows.length - 1, Math.max(0, current + step));
+        const current = rows.findIndex((row) => row.id === this.ctx.selectedEntryId());
+        const step = key(data, "down") ? 1 : -1;
+        // Wrap around: up from the first entry goes to the last, down from the
+        // last entry goes back to the first.
+        let index: number;
+        if (current === -1) {
+          index = 0;
+        } else if (current === 0 && step === -1) {
+          index = rows.length - 1;
+        } else if (current === rows.length - 1 && step === 1) {
+          index = 0;
+        } else {
+          index = current + step;
+        }
         this.ctx.selectEntry(rows[index]!.id);
       }
       return;
