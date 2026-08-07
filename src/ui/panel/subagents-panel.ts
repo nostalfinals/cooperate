@@ -10,7 +10,9 @@ export class SubagentsPanel implements Component {
   private readonly options: PanelOptions;
   private readonly ctx: PanelContext;
   private active: PanelView;
-  private selectedId?: string;
+  private tab: "active" | "history" = "active";
+  private activeSelectedId?: string;
+  private historySelectedId?: string;
   private detailId?: string;
   private selectedEntryId?: string;
   private timer?: ReturnType<typeof setInterval>;
@@ -23,29 +25,47 @@ export class SubagentsPanel implements Component {
       theme: options.theme,
       maxVisible,
       snapshots: () => options.snapshots(),
-      detailSnapshot: () => (this.detailId ? options.snapshotOf(this.detailId) : undefined),
-      getTree: (subagentId) => options.getTree(subagentId),
+      detailSnapshot: () => (this.detailId
+        ? (this.tab === "history" ? options.historyDetail(this.detailId)?.snapshot : options.snapshotOf(this.detailId))
+        : undefined),
+      getTree: (subagentId) => this.tab === "history" ? options.getHistoryTree(subagentId) : options.getTree(subagentId),
       getSteeringMessages: (subagentId) => options.getSteeringMessages(subagentId),
       cancel: (subagentId) => options.cancel(subagentId),
       replaceSteering: (subagentId, text) => options.replaceSteering(subagentId, text),
       requestRender: () => options.requestRender(),
       close: () => {
+        this.releaseHistoryDetail();
         this.dispose();
         options.close();
       },
-      selectedId: () => this.selectedId,
+      selectedId: () => this.tab === "history" ? this.historySelectedId : this.activeSelectedId,
       selectId: (id) => {
-        this.selectedId = id;
+        if (this.tab === "history") this.historySelectedId = id;
+        else this.activeSelectedId = id;
       },
       selectedEntryId: () => this.selectedEntryId,
       selectEntry: (id) => {
         this.selectedEntryId = id;
       },
+      tab: () => this.tab,
+      switchTab: () => {
+        if (this.active !== this.listView) return;
+        this.releaseHistoryDetail();
+        this.tab = this.tab === "active" ? "history" : "active";
+        this.detailId = undefined;
+        this.selectedEntryId = undefined;
+      },
+      historyRoots: () => options.historyRoots(),
+      historyDetail: (subagentId) => options.historyDetail(subagentId),
+      getHistoryTree: (subagentId) => options.getHistoryTree(subagentId),
       showList: () => this.showList(),
       showDetail: (id) => {
         this.detailId = id;
         this.selectedEntryId = undefined;
         this.active = new DetailView(this.ctx);
+        if (this.tab === "history") {
+          void options.loadHistoryTree(id).then(() => options.requestRender());
+        }
       },
       backToDetail: () => {
         this.active = new DetailView(this.ctx);
@@ -61,9 +81,12 @@ export class SubagentsPanel implements Component {
       },
       isCurrent: (view) => this.active === view,
     };
-    this.active = new ListView(this.ctx);
+    this.listView = new ListView(this.ctx);
+    this.active = this.listView;
     if (options.startTimer) this.timer = setInterval(options.requestRender, 1_000);
   }
+
+  private listView!: ListView;
 
   invalidate(): void {}
 
@@ -87,8 +110,13 @@ export class SubagentsPanel implements Component {
   }
 
   private showList(): void {
+    this.releaseHistoryDetail();
     this.detailId = undefined;
     this.selectedEntryId = undefined;
-    this.active = new ListView(this.ctx);
+    this.active = this.listView;
+  }
+
+  private releaseHistoryDetail(): void {
+    if (this.detailId) this.options.releaseHistoryTree(this.detailId);
   }
 }

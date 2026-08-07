@@ -66,7 +66,10 @@ export class DetailView implements PanelView {
     const rows = this.historyRows(snapshot);
     const lines = [header, "", theme.fg("muted", snapshot.task), ""];
     if (rows.length === 0) {
-      lines.push(theme.fg("muted", "No messages yet"));
+      // Historical sessions are loaded lazily; until the tree is ready (or if the
+      // session file is gone) fall back to the stored final result text.
+      const fallback = this.ctx.historyDetail?.(snapshot.subagentId)?.result;
+      lines.push(fallback ? theme.fg("muted", fallback) : theme.fg("muted", "No messages yet"));
     } else {
       const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedEntryId()));
       this.ctx.selectEntry(rows[selectedIndex]!.id);

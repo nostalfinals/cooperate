@@ -12,13 +12,14 @@ import type { ChildRuntimeFactory } from "./runtime/types.ts";
 import { isAbortedAgentEnd } from "./subagent/result.ts";
 import { SubagentService } from "./subagent/service.ts";
 import { NativeSessionStore } from "./session/native-store.ts";
+import { SubagentHistory } from "./session/history.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "./session/ownership.ts";
 import { createSubagentTool } from "./tool/subagent-tool.ts";
 import { setToolDefinitionProvider } from "./tool/activity-title.ts";
 import { renderCompletionMessage } from "./ui/presentation.ts";
 import { SubagentsPanel } from "./ui/panel/subagents-panel.ts";
 import { copyMasterSessionDirectory, masterSessionIdFromFile } from "./session/master-copy.ts";
-import { collectMasterSessionIds, cleanOrphanSessions } from "./session/orphan-cleanup.ts";
+import { collectMasterSessionIds, cleanOrphanHistoryFiles, cleanOrphanSessions } from "./session/orphan-cleanup.ts";
 
 export interface CooperateExtensionOptions {
   agentDir?: string;
@@ -66,6 +67,9 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
           // race a fork copy that creates a fresh namespace.
           shouldProceed: () => options.generation === sessionGeneration,
         });
+        await cleanOrphanHistoryFiles(options.agentDir, existingMasterIds, {
+          shouldProceed: () => options.generation === sessionGeneration,
+        });
       } catch (error) {
         // Orphan cleanup is best-effort housekeeping; never fail session startup.
         console.error("[cooperate] orphan session cleanup failed:", error);
@@ -94,6 +98,11 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
             replaceSteering: (subagentId, text) => service.replaceSteering(subagentId, text),
             getSteeringMessages: (subagentId) => service.getSteeringMessages(subagentId),
             getTree: (subagentId) => service.getTree(subagentId),
+            historyRoots: () => service.historyRoots(),
+            historyDetail: (subagentId) => service.historyRecord(subagentId),
+            loadHistoryTree: (subagentId) => service.loadHistoryTree(subagentId),
+            getHistoryTree: (subagentId) => service.historyTree(subagentId),
+            releaseHistoryTree: (subagentId) => service.releaseHistoryTree(subagentId),
             close: () => done(undefined),
             requestRender: () => tui.requestRender(),
             onDispose: unsubscribe,
@@ -149,9 +158,13 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
         masterSessionId,
         cwd,
       });
+      const history = new SubagentHistory(agentDir, masterSessionId);
+      await history.load();
+      if (generation !== sessionGeneration) return;
       const service = new SubagentService({
         catalog,
         store,
+        history,
         runtimeFactory,
         toolFactory: createSubagentTool,
         agentDir,

@@ -12,6 +12,16 @@ export interface PanelOptions {
   replaceSteering(subagentId: string, text: string): Promise<void>;
   getSteeringMessages(subagentId: string): readonly string[];
   getTree(subagentId: string): readonly SessionTreeNode[] | undefined;
+  /** Completed top-level runs of this master session, oldest first. */
+  historyRoots(): readonly SubagentSnapshot[];
+  /** Snapshot (+ final result text) of a completed run, including nested subagents. */
+  historyDetail(subagentId: string): { snapshot: SubagentSnapshot; result?: string } | undefined;
+  /** Load and cache the truncated tree of a historical subagent session. */
+  loadHistoryTree(subagentId: string): Promise<readonly SessionTreeNode[] | undefined>;
+  /** Synchronous cache read for a historical subagent session. */
+  getHistoryTree(subagentId: string): readonly SessionTreeNode[] | undefined;
+  /** Drop a cached history tree once the panel leaves the detail view. */
+  releaseHistoryTree(subagentId: string): void;
   close(): void;
   requestRender(): void;
   onDispose?(): void;
@@ -36,6 +46,12 @@ export interface PanelContext {
   /** Currently selected history entry in the detail/message views. */
   selectedEntryId(): string | undefined;
   selectEntry(id: string): void;
+  /** Which list is shown: currently active runs or completed history runs. */
+  tab(): "active" | "history";
+  switchTab(): void;
+  historyRoots(): readonly SubagentSnapshot[];
+  historyDetail(subagentId: string): { snapshot: SubagentSnapshot; result?: string } | undefined;
+  getHistoryTree(subagentId: string): readonly SessionTreeNode[] | undefined;
   showList(): void;
   showDetail(id: string): void;
   /** Return to detail from message/confirm/steer, keeping the selected entry. */
@@ -55,6 +71,6 @@ export interface PanelView {
   stale?(): boolean;
 }
 
-export function key(data: string, name: "up" | "down" | "enter" | "escape"): boolean {
+export function key(data: string, name: "up" | "down" | "enter" | "escape" | "left" | "right"): boolean {
   return matchesKey(data, name);
 }

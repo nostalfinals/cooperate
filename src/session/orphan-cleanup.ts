@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { cooperateSessionsDirectory } from "./master-copy.ts";
+import { historyDirectory } from "./history.ts";
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -126,9 +127,34 @@ export async function cleanOrphanSessions(
   options: OrphanCleanupOptions = {},
 ): Promise<string[]> {
   const orphans = await selectOrphanSessionDirectories(cooperateSessionsDirectory(agentDir), existingMasterIds);
+  return removeOrphans(orphans, options);
+}
+
+/** Remove sidecar history files whose owning native master session was deleted. */
+export async function cleanOrphanHistoryFiles(
+  agentDir: string,
+  existingMasterIds: ReadonlySet<string>,
+  options: OrphanCleanupOptions = {},
+): Promise<string[]> {
+  const root = historyDirectory(agentDir);
+  if (!(await exists(root))) return [];
+  const orphans: string[] = [];
+  const entries = await opendir(root);
+  for await (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const masterId = entry.name.slice(0, -".jsonl".length);
+    if (!existingMasterIds.has(masterId)) orphans.push(resolve(root, entry.name));
+  }
+  return removeOrphans(orphans, options);
+}
+
+async function removeOrphans(
+  paths: readonly string[],
+  options: OrphanCleanupOptions,
+): Promise<string[]> {
   const trash = options.trash ?? systemTrash;
   const handled: string[] = [];
-  for (const path of orphans) {
+  for (const path of paths) {
     // Synchronous check with no await between it and the trash call, so a
     // stale background run cannot remove a namespace that a newer session
     // replacement (e.g. a fork copy) just created.

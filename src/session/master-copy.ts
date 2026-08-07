@@ -1,8 +1,9 @@
 import { constants } from "node:fs";
-import { access, cp, mkdir, rename, rm } from "node:fs/promises";
+import { access, cp, copyFile, mkdir, rename, rm } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { historyDirectory } from "./history.ts";
 
 export function cooperateSessionsDirectory(agentDir: string): string {
   return resolve(agentDir, "cooperate", "sessions");
@@ -53,14 +54,30 @@ export async function copyMasterSessionDirectory(
   );
   if (await exists(staging)) throw new Error(`Cooperate session staging destination already exists: ${staging}`);
   const copy = options.copy ?? ((from, to) => cp(from, to, { recursive: true, errorOnExist: true, force: false }));
+
+  const historyFile = resolve(historyDirectory(agentDir), `${sourceMasterId}.jsonl`);
+  const historyStaging = resolve(historyDirectory(agentDir), `.copy-${destinationMasterId}-${randomBytes(6).toString("hex")}.jsonl`);
+  const hasHistory = await exists(historyFile);
+  if (hasHistory && (await exists(historyStaging))) {
+    throw new Error(`Cooperate history staging destination already exists: ${historyStaging}`);
+  }
   try {
     await copy(source, staging);
     if (await exists(destination)) {
       throw new Error(`Cooperate session destination already exists: ${destination}`);
     }
+    if (hasHistory) {
+      await mkdir(dirname(historyStaging), { recursive: true });
+      await copyFile(historyFile, historyStaging);
+    }
     await rename(staging, destination);
+    if (hasHistory) {
+      const historyDestination = resolve(historyDirectory(agentDir), `${destinationMasterId}.jsonl`);
+      await rename(historyStaging, historyDestination);
+    }
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
+    await rm(historyStaging, { force: true });
     throw error;
   }
 }

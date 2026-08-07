@@ -19,6 +19,10 @@ export class ListView implements PanelView {
       this.ctx.close();
       return;
     }
+    if (key(data, "left") || key(data, "right")) {
+      this.ctx.switchTab();
+      return;
+    }
     if (key(data, "up") || key(data, "down")) {
       const current = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedId()));
       const step = key(data, "down") ? 1 : -1;
@@ -41,8 +45,12 @@ export class ListView implements PanelView {
   render(width: number): Container {
     const theme = this.ctx.theme;
     const rows = this.listRows();
+    const title = this.tabBar();
     if (rows.length === 0) {
-      return shell(theme, "Subagents", ["No active subagents"], "esc close");
+      const empty = this.ctx.tab() === "history"
+        ? ["No completed subagents"]
+        : ["No active subagents", "", "View subagents completed in previous turns in the Completed tab"];
+      return shell(theme, title, empty, "esc close · ←→ tabs");
     }
     const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedId()));
     this.ctx.selectId(rows[selectedIndex]!.id);
@@ -50,11 +58,28 @@ export class ListView implements PanelView {
     const maxWidth = Math.max(20, width - 4);
     const lines = visible.map((row) =>
       selectable(truncateToWidth(row.line, maxWidth, "…"), row.id === this.ctx.selectedId(), theme));
-    return shell(theme, "Subagents", lines, "esc close · enter inspect");
+    return shell(theme, title, lines, "esc close · enter inspect · ←→ tabs");
+  }
+
+  private tabBar(): string {
+    const theme = this.ctx.theme;
+    const tab = (selected: boolean, label: string): string =>
+      selected
+        ? theme.bg("selectedBg", theme.fg("accent", theme.bold(label)))
+        : theme.fg("muted", label);
+    const current = this.ctx.tab();
+    return tab(current === "active", "Active") + theme.fg("muted", " │ ")
+      + tab(current === "history", "Completed");
   }
 
   private listRows(): TreeRow[] {
     const rows: TreeRow[] = [];
+    if (this.ctx.tab() === "history") {
+      for (const root of this.ctx.historyRoots()) {
+        rows.push(...collectTreeRows(root, this.ctx.theme, true, renderActivityTitle));
+      }
+      return rows;
+    }
     for (const root of this.ctx.snapshots()) {
       rows.push(...collectTreeRows(root, this.ctx.theme, true, renderActivityTitle));
     }

@@ -4,8 +4,9 @@ import { type CompletionNotice, type Messenger, DeferredMessenger } from "./mess
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
+import { buildSessionTree, type SubagentHistory } from "../session/history.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
-import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import type { SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
 import { completionTitle, extractFinalText } from "./result.ts";
@@ -23,6 +24,8 @@ export interface SubagentServiceOptions {
   parentId?: string;
   allowedDefinitions?: readonly string[];
   messenger?: Messenger;
+  /** Sidecar history of completed top-level runs; only the top-level service writes it. */
+  history?: SubagentHistory;
 }
 
 interface NativeOwnershipSession {
@@ -58,6 +61,7 @@ export class SubagentService {
   private readonly childServices = new Map<string, SubagentService>();
   private readonly runs = new Map<string, SubagentRun>();
   private readonly records: Map<string, SessionRecord>;
+  private readonly historyTrees = new Map<string, readonly SessionTreeNode[]>();
   private messenger?: Messenger;
   private disposed = false;
 
@@ -169,6 +173,10 @@ export class SubagentService {
     const outcomePromise = this.executeRun(subagentId, record, request.prompt, run, environment.signal)
       .then((outcome) => {
         environment.onSnapshot?.(outcome.snapshot);
+        return outcome;
+      })
+      .then(async (outcome) => {
+        await this.recordHistory(record, outcome);
         return outcome;
       })
       .finally(() => {
@@ -293,6 +301,71 @@ export class SubagentService {
     return (native as { getTree(): SessionTreeNode[] }).getTree();
   }
 
+  historyRoots(): readonly SubagentSnapshot[] {
+    return this.options.history?.roots() ?? [];
+  }
+
+  historyRecord(subagentId: string): { snapshot: SubagentSnapshot; result?: string } | undefined {
+    const record = this.options.history?.record(subagentId);
+    if (record) return { snapshot: record.snapshot, result: record.result };
+    // Nested runs have no sidecar record of their own; fall back to the
+    // recursive snapshot carried inside a top-level record.
+    const snapshot = this.options.history?.snapshot(subagentId);
+    if (!snapshot) return undefined;
+    return { snapshot };
+  }
+
+  /** Synchronous cache read; kicks off a background load when the tree is not cached yet. */
+  historyTree(subagentId: string): readonly SessionTreeNode[] | undefined {
+    const cached = this.historyTrees.get(subagentId);
+    if (cached) return cached;
+    if (!this.historyTreeTarget(subagentId)) return undefined;
+    void this.loadHistoryTree(subagentId);
+    return undefined;
+  }
+
+  /** Load (and cache) the truncated tree of a historical subagent session. */
+  async loadHistoryTree(subagentId: string): Promise<readonly SessionTreeNode[] | undefined> {
+    const cached = this.historyTrees.get(subagentId);
+    if (cached) return cached;
+    const target = this.historyTreeTarget(subagentId);
+    if (!target) return undefined;
+    try {
+      const opened = await this.options.store.open(target.sessionId);
+      const native = opened.native as { getEntries(): readonly SessionEntry[] } | undefined;
+      if (!native) return undefined;
+      // Both top-level records and nested boundaries truncate to the run's
+      // completion entry count; only boundary-less legacy snapshots show the
+      // full session file.
+      const entries = target.endCount >= 0
+        ? native.getEntries().slice(0, target.endCount)
+        : native.getEntries();
+      const tree = buildSessionTree(entries);
+      this.historyTrees.set(subagentId, tree);
+      return tree;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Locate the session backing a historical subagent, top-level or nested. */
+  private historyTreeTarget(subagentId: string): { sessionId: string; endCount: number } | undefined {
+    const record = this.options.history?.record(subagentId);
+    if (record) return { sessionId: record.sessionId, endCount: record.endCount };
+    const boundary = this.options.history?.boundary(subagentId);
+    if (boundary) return { sessionId: boundary.sessionId, endCount: boundary.endCount };
+    // Fallback for records written before nested boundaries existed: show the
+    // full session file since no completion boundary is known.
+    const snapshot = this.options.history?.snapshot(subagentId);
+    if (!snapshot) return undefined;
+    return { sessionId: snapshot.sessionId, endCount: -1 };
+  }
+
+  /** Drop a cached history tree (called when the panel leaves the detail view). */
+  releaseHistoryTree(subagentId: string): void {
+    this.historyTrees.delete(subagentId);
+  }
+
   async steer(subagentId: string, text: string): Promise<void> {
     const owner = this.findRunOwner(subagentId);
     await owner?.runs.get(subagentId)?.steer?.(text);
@@ -386,6 +459,36 @@ export class SubagentService {
       if (!direct.has(id) || !handle) throw new Error(`Subagent '${id}' is not an active direct child`);
       return handle;
     });
+  }
+
+  private async recordHistory(record: SessionRecord, outcome: ExecutionOutcome): Promise<void> {
+    const history = this.options.history;
+    if (!history) return;
+    try {
+      const native = record.native as { getEntries?(): readonly unknown[] } | undefined;
+      const endCount = native?.getEntries?.().length ?? 0;
+      if (this.parentId === undefined) {
+        await history.append({
+          subagentId: outcome.snapshot.subagentId,
+          sessionId: outcome.snapshot.sessionId,
+          snapshot: outcome.snapshot,
+          result: outcome.result,
+          endCount,
+          completedAt: Date.now(),
+        });
+      } else {
+        // Nested runs record only their completion boundary so a session file
+        // shared by later subagents can still be truncated per subagent.
+        await history.appendBoundary({
+          subagentId: outcome.snapshot.subagentId,
+          sessionId: outcome.snapshot.sessionId,
+          endCount,
+          completedAt: Date.now(),
+        });
+      }
+    } catch {
+      // History is best-effort metadata; a failed append must not fail the run.
+    }
   }
 
   private async executeRun(
