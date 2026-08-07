@@ -137,7 +137,11 @@ export class SubagentService {
         onMessenger: (messenger) => nestedService.bindMessenger(messenger),
         onAgentEnd: async (terminal) => {
           this.coordinator.ownLoopEnded(subagentId, terminal);
-          await this.coordinator.waitForDescendants(subagentId);
+          // A failed agent_end may be a transient provider error that pi's auto-retry
+          // recovers from within this same prompt() call. Descendants (e.g. background
+          // async children) must neither be cancelled nor awaited here; only the
+          // confirmed-failure path in executeRun cancels them.
+          if (terminal.state !== "failed") await this.coordinator.waitForDescendants(subagentId);
         },
         onActivity: (activity) => this.coordinator.setActivity(subagentId, activity),
       });
@@ -400,6 +404,10 @@ export class SubagentService {
     try {
       await run.prompt(task);
       result = truncateForTool(extractFinalText(run.messagesSinceStart()));
+      // prompt() resolving means the final assistant turn succeeded; if pi's auto-retry
+      // emitted a transient error agent_end mid-run (e.g. fetch failed), the stale failed
+      // cause must not override the actual finished outcome at finish() time.
+      this.coordinator.recoverAsFinished(subagentId);
       this.coordinator.ownLoopEnded(subagentId, cause);
     } catch (error) {
       caught = error instanceof Error ? error : new Error(String(error));
@@ -416,6 +424,11 @@ export class SubagentService {
           this.coordinator.ownLoopEnded(subagentId, cause);
         }
       }
+    }
+    // A confirmed failure (retries exhausted) must stop still-running descendants;
+    // a transient agent_end failure that pi's auto-retry recovered from must not.
+    if (cause.state === "failed") {
+      this.coordinator.cancelDescendants(subagentId, cause.reason);
     }
     const snapshot = await this.coordinator.finish(subagentId, cause);
     if (!snapshot) throw new Error(`Subagent '${subagentId}' completed without a terminal snapshot`);

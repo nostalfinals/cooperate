@@ -79,4 +79,21 @@ describe("StructuredCoordinator", () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.children)).toBe(true);
   });
+
+  it("recovers a stale failed cause to finished once the run is confirmed successful, without touching cancellations", async () => {
+    const coordinator = new StructuredCoordinator(3, { generateId: (() => { let n = 0; return () => `${++n}`.padStart(8, "0"); })() });
+
+    const recovered = coordinator.start({ parentId: undefined, sessionId: "s1", agent: "worker", task: "task" });
+    coordinator.ownLoopEnded(recovered.subagentId, { state: "failed", reason: "fetch failed" });
+    coordinator.recoverAsFinished(recovered.subagentId);
+    const recoveredSnapshot = await coordinator.finish(recovered.subagentId, { state: "finished" });
+    expect(recoveredSnapshot?.state).toBe("finished");
+    expect(recoveredSnapshot?.reason).toBeUndefined();
+
+    const cancelled = coordinator.start({ parentId: undefined, sessionId: "s2", agent: "worker", task: "task" });
+    coordinator.requestCancel(cancelled.subagentId, "cancelled by user");
+    coordinator.recoverAsFinished(cancelled.subagentId);
+    const cancelledSnapshot = await coordinator.finish(cancelled.subagentId, { state: "cancelled" });
+    expect(cancelledSnapshot?.state).toBe("cancelled");
+  });
 });

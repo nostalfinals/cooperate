@@ -131,6 +131,22 @@ describe("blocking subagent run", () => {
     expect(h.run.abort).toHaveBeenCalledOnce();
     expect(h.run.dispose).toHaveBeenCalledOnce();
   });
+
+  it("finishes successfully when pi's auto-retry recovers after a transient agent_end failure", async () => {
+    const h = harness();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(h.run.prompt).mockImplementation(async () => { await gate; });
+
+    const pending = h.service.run({ agent: "worker", task: "Recover", prompt: "Recover" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+    // pi emits agent_end with a transient provider failure, then auto-retries within the same prompt().
+    await h.invocations[0]!.onAgentEnd!({ state: "failed", reason: "fetch failed" });
+    release();
+
+    await expect(pending).resolves.toMatchObject({ sessionId: "session-1" });
+    expect(h.run.dispose).toHaveBeenCalledOnce();
+  });
 });
 
 describe("extractFinalText", () => {

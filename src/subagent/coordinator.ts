@@ -117,9 +117,37 @@ export class StructuredCoordinator {
     const node = this.nodes.get(subagentId);
     if (!node || node.ownCause) return;
     node.ownCause = { ...cause };
-    if (cause.state === "failed" || cause.state === "cancelled") {
-      for (const childId of [...node.children]) this.requestCancel(childId, cause.reason ?? cause.state);
-    }
+    this.emit();
+  }
+
+  /**
+   * Cancel all still-active descendants of a node.
+   *
+   * Called only once a run is confirmed to have failed (retries exhausted), so a
+   * transient agent_end failure that pi's auto-retry later recovers from does not
+   * kill background children prematurely. Cancellation from a user or shutdown
+   * request keeps flowing through requestCancel, which already recurses. A node
+   * whose own loop is already known to have finished keeps its descendants alive.
+   */
+  cancelDescendants(subagentId: string, reason = "ancestor failed"): void {
+    const node = this.nodes.get(subagentId);
+    if (!node || node.ownCause?.state === "finished") return;
+    for (const childId of [...node.children]) this.requestCancel(childId, reason);
+  }
+
+  /**
+   * Replace a stale failed own-loop cause with a finished one.
+   *
+   * pi's auto-retry can emit an `agent_end` carrying a transient error (e.g. a dropped
+   * connection) and then recover within the same prompt() call. Once the caller has
+   * confirmed the run actually completed successfully, that earlier failure is obsolete
+   * and must not win at finish() time. Cancelled causes are preserved: cancellation is
+   * user intent, not a recoverable blip.
+   */
+  recoverAsFinished(subagentId: string): void {
+    const node = this.nodes.get(subagentId);
+    if (!node || node.ownCause?.state !== "failed") return;
+    node.ownCause = { state: "finished" };
     this.emit();
   }
 

@@ -17,7 +17,7 @@ const definition = (name: string, children: readonly string[] = []): AgentDefini
   filePath: `/defs/${name}.md`,
 });
 
-function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"]) {
+function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"], holdChildren = false) {
   const catalog: DefinitionCatalog = {
     config: { maxDepth, cleanOrphanSessions: true },
     definitions: [definition("parent", parentChildren), definition("leaf"), definition("forbidden")],
@@ -46,19 +46,33 @@ function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
   const invocations: SubagentInvocation[] = [];
-  let releaseParent!: () => void;
-  const parentGate = new Promise<void>((resolve) => { releaseParent = resolve; });
+  const runs: SubagentRun[] = [];
+  let failParent = false;
+  let resolveParent!: () => void;
+  const parentGate = new Promise<void>((resolve) => { resolveParent = resolve; });
+  let resolveChild!: () => void;
+  let rejectChild!: (error: Error) => void;
+  const childGate = new Promise<void>((resolve, reject) => { resolveChild = resolve; rejectChild = reject; });
   const runtimeFactory = {
     start: vi.fn(async (invocation: SubagentInvocation): Promise<SubagentRun> => {
       invocations.push(invocation);
-      return {
+      const run: SubagentRun = {
         prompt: vi.fn(async () => {
-          if (invocation.definition.name === "parent") await parentGate;
+          if (invocation.definition.name === "parent") {
+            await parentGate;
+            if (failParent) throw new Error("fetch failed");
+          } else if (holdChildren) {
+            await childGate;
+          }
         }),
-        abort: vi.fn(),
+        abort: vi.fn(() => {
+          if (invocation.definition.name === "leaf") rejectChild(new Error("aborted"));
+        }),
         dispose: vi.fn(async () => undefined),
         messagesSinceStart: () => [{ role: "assistant", content: [{ type: "text", text: `${invocation.definition.name} result` }] }],
       };
+      runs.push(run);
+      return run;
     }),
   };
   const coordinator = new StructuredCoordinator(maxDepth, { generateId: (() => { let id = 0; return () => `${++id}`.padStart(8, "0"); })() });
@@ -71,7 +85,18 @@ function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"
     persistOwnership: async (id) => { rootOwnership.push(id); },
     visibleSessionIds: () => rootOwnership,
   });
-  return { catalog, coordinator, service, store, invocations, ownershipBySession, releaseParent };
+  return {
+    catalog,
+    coordinator,
+    service,
+    store,
+    invocations,
+    runs,
+    ownershipBySession,
+    releaseParent: resolveParent,
+    releaseChild: resolveChild,
+    setFailParent: (value: boolean) => { failParent = value; },
+  };
 }
 
 async function executeNested(invocation: SubagentInvocation, params: Record<string, unknown>) {
@@ -152,5 +177,54 @@ describe("nested subagent runs", () => {
     expect(h.coordinator.isSessionLocked("session-2")).toBe(false);
     h.releaseParent();
     await parentPending;
+  });
+
+  it("does not cancel a running async child when the parent's transient agent_end failure recovers", async () => {
+    const h = createHarness(3, ["leaf"], true);
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+    const parentInvocation = h.invocations[0]!;
+
+    // Async child keeps running in the background while the parent continues its loop.
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task", async: true });
+    const childRun = h.runs[1]!;
+
+    // Transient agent_end failure: pi will auto-retry, so the child must survive.
+    await parentInvocation.onAgentEnd!({ state: "failed", reason: "fetch failed" });
+    expect(childRun.abort).not.toHaveBeenCalled();
+
+    h.releaseParent();
+    h.releaseChild();
+    await parentPending;
+    expect(childRun.abort).not.toHaveBeenCalled();
+    const root = h.service.snapshotRoots()[0]!;
+    expect(root).toMatchObject({ state: "finished" });
+    expect(root.children[0]).toMatchObject({ state: "finished" });
+  });
+
+  it("cancels a still-running async child once the parent's failure is confirmed", async () => {
+    const h = createHarness(3, ["leaf"], true);
+    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
+    const parentInvocation = h.invocations[0]!;
+
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task", async: true });
+    const childRun = h.runs[1]!;
+
+    // Transient agent_end failure alone must not cancel the child.
+    await parentInvocation.onAgentEnd!({ state: "failed", reason: "fetch failed" });
+    expect(childRun.abort).not.toHaveBeenCalled();
+
+    // Retries exhausted: the parent's prompt now fails for real.
+    h.setFailParent(true);
+    h.releaseParent();
+    await expect(parentPending).rejects.toThrow("Session ");
+    expect(childRun.abort).toHaveBeenCalledOnce();
+
+    await vi.waitFor(() => {
+      const root = h.service.snapshotRoots()[0]!;
+      expect(root).toMatchObject({ state: "failed" });
+      expect(root.children[0]).toMatchObject({ state: "cancelled" });
+    });
   });
 });
