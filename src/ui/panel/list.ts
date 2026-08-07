@@ -45,12 +45,12 @@ export class ListView implements PanelView {
   render(width: number): Container {
     const theme = this.ctx.theme;
     const rows = this.listRows();
-    const title = this.tabBar();
+    const tabBar = this.tabBar();
     if (rows.length === 0) {
       const empty = this.ctx.tab() === "history"
         ? ["No completed subagents"]
         : ["No active subagents", "", "View subagents completed in previous turns in the Completed tab"];
-      return shell(theme, title, empty, "esc close · ←→ tabs");
+      return shell(theme, "Subagents", [tabBar, "", ...empty], "esc close · ←→ tabs");
     }
     const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === this.ctx.selectedId()));
     this.ctx.selectId(rows[selectedIndex]!.id);
@@ -58,7 +58,7 @@ export class ListView implements PanelView {
     const maxWidth = Math.max(20, width - 4);
     const lines = visible.map((row) =>
       selectable(truncateToWidth(row.line, maxWidth, "…"), row.id === this.ctx.selectedId(), theme));
-    return shell(theme, title, lines, "esc close · enter inspect · ←→ tabs");
+    return shell(theme, "Subagents", [tabBar, "", ...lines], "esc close · enter inspect · ←→ tabs");
   }
 
   private tabBar(): string {
