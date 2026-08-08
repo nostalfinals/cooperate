@@ -1,9 +1,9 @@
 {
   "name": "cooperate",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "type": "module",
-  "description": "A clean, minimal subagent implementation for Pi",
+  "description": "A minimal subagent extension for Pi",
   "keywords": [
     "pi-package"
   ],
