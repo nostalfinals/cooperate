@@ -4,13 +4,14 @@ import { type CompletionNotice, type Messenger, DeferredMessenger } from "./mess
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
-import { buildSessionTree, type SubagentHistory } from "../session/history.ts";
+import type { SubagentHistory } from "../session/history.ts";
+import { SubagentHistoryView } from "../session/history-view.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
-import type { SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
 import { completionTitle, extractFinalText } from "./result.ts";
-import type { RunEnvironment, RunRequest, RunResponse, SubagentActivity, SubagentSnapshot, TerminalCause } from "./types.ts";
+import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot, TerminalCause } from "./types.ts";
 
 export interface SubagentServiceOptions {
   catalog: DefinitionCatalog;
@@ -61,13 +62,14 @@ export class SubagentService {
   private readonly childServices = new Map<string, SubagentService>();
   private readonly runs = new Map<string, SubagentRun>();
   private readonly records: Map<string, SessionRecord>;
-  private readonly historyTrees = new Map<string, readonly SessionTreeNode[]>();
+  private readonly historyView: SubagentHistoryView;
   private messenger?: Messenger;
   private disposed = false;
 
   constructor(options: SubagentServiceOptions, records = new Map<string, SessionRecord>()) {
     this.options = options;
     this.records = records;
+    this.historyView = new SubagentHistoryView(options.history, options.store);
     this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
     this.parentId = options.parentId;
     this.messenger = options.messenger;
@@ -170,7 +172,7 @@ export class SubagentService {
     };
     const unsubscribe = environment.onSnapshot ? this.coordinator.subscribe(emitSnapshot) : undefined;
     emitSnapshot();
-    const outcomePromise = this.executeRun(subagentId, record, request.prompt, run, environment.signal)
+    const outcomePromise = this.executeRun(subagentId, request.prompt, run, environment.signal)
       .then((outcome) => {
         environment.onSnapshot?.(outcome.snapshot);
         return outcome;
@@ -302,68 +304,23 @@ export class SubagentService {
   }
 
   historyRoots(): readonly SubagentSnapshot[] {
-    return this.options.history?.roots() ?? [];
+    return this.historyView.roots();
   }
 
   historyRecord(subagentId: string): { snapshot: SubagentSnapshot; result?: string } | undefined {
-    const record = this.options.history?.record(subagentId);
-    if (record) return { snapshot: record.snapshot, result: record.result };
-    // Nested runs have no sidecar record of their own; fall back to the
-    // recursive snapshot carried inside a top-level record.
-    const snapshot = this.options.history?.snapshot(subagentId);
-    if (!snapshot) return undefined;
-    return { snapshot };
+    return this.historyView.record(subagentId);
   }
 
-  /** Synchronous cache read; kicks off a background load when the tree is not cached yet. */
   historyTree(subagentId: string): readonly SessionTreeNode[] | undefined {
-    const cached = this.historyTrees.get(subagentId);
-    if (cached) return cached;
-    if (!this.historyTreeTarget(subagentId)) return undefined;
-    void this.loadHistoryTree(subagentId);
-    return undefined;
+    return this.historyView.tree(subagentId);
   }
 
-  /** Load (and cache) the truncated tree of a historical subagent session. */
   async loadHistoryTree(subagentId: string): Promise<readonly SessionTreeNode[] | undefined> {
-    const cached = this.historyTrees.get(subagentId);
-    if (cached) return cached;
-    const target = this.historyTreeTarget(subagentId);
-    if (!target) return undefined;
-    try {
-      const opened = await this.options.store.open(target.sessionId);
-      const native = opened.native as { getEntries(): readonly SessionEntry[] } | undefined;
-      if (!native) return undefined;
-      // Both top-level records and nested boundaries truncate to the run's
-      // completion entry count; only boundary-less legacy snapshots show the
-      // full session file.
-      const entries = target.endCount >= 0
-        ? native.getEntries().slice(0, target.endCount)
-        : native.getEntries();
-      const tree = buildSessionTree(entries);
-      this.historyTrees.set(subagentId, tree);
-      return tree;
-    } catch {
-      return undefined;
-    }
+    return this.historyView.loadTree(subagentId);
   }
 
-  /** Locate the session backing a historical subagent, top-level or nested. */
-  private historyTreeTarget(subagentId: string): { sessionId: string; endCount: number } | undefined {
-    const record = this.options.history?.record(subagentId);
-    if (record) return { sessionId: record.sessionId, endCount: record.endCount };
-    const boundary = this.options.history?.boundary(subagentId);
-    if (boundary) return { sessionId: boundary.sessionId, endCount: boundary.endCount };
-    // Fallback for records written before nested boundaries existed: show the
-    // full session file since no completion boundary is known.
-    const snapshot = this.options.history?.snapshot(subagentId);
-    if (!snapshot) return undefined;
-    return { sessionId: snapshot.sessionId, endCount: -1 };
-  }
-
-  /** Drop a cached history tree (called when the panel leaves the detail view). */
   releaseHistoryTree(subagentId: string): void {
-    this.historyTrees.delete(subagentId);
+    this.historyView.releaseTree(subagentId);
   }
 
   async steer(subagentId: string, text: string): Promise<void> {
@@ -493,7 +450,6 @@ export class SubagentService {
 
   private async executeRun(
     subagentId: string,
-    record: SessionRecord,
     task: string,
     run: SubagentRun,
     signal?: AbortSignal,

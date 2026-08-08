@@ -30,7 +30,7 @@ export class MessageView implements PanelView {
     }
   }
 
-  render(width: number): Container {
+  render(_width: number): Container {
     const theme = this.ctx.theme;
     const snapshot = this.ctx.detailSnapshot();
     const entry = snapshot ? this.currentMessageEntry(snapshot) : undefined;

@@ -4,13 +4,7 @@ import type { Messenger } from "../subagent/messenger.ts";
 import type { SubagentActivity } from "../subagent/types.ts";
 import type { SessionRecord } from "../session/types.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type {
-  RunEnvironment,
-  RunRequest,
-  RunResponse,
-  SubagentSnapshot,
-  TerminalCause,
-} from "../subagent/types.ts";
+import type { TerminalCause } from "../subagent/types.ts";
 
 /** Pi model-registry shape the child runtime needs at invocation time. */
 export interface ModelRuntimeLike {

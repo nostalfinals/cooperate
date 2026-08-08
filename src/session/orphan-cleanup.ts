@@ -1,19 +1,10 @@
-import { constants } from "node:fs";
-import { access, opendir, open, rm } from "node:fs/promises";
+import { opendir, open, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { cooperateSessionsDirectory } from "./master-copy.ts";
 import { historyDirectory } from "./history.ts";
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { pathExists } from "./filesystem.ts";
 
 /**
  * Upper bound for a session header line. Real headers are well under 1KB; the
@@ -48,7 +39,7 @@ async function readFirstLine(file: string): Promise<string | undefined> {
 }
 
 async function jsonlFiles(directory: string): Promise<string[]> {
-  if (!(await exists(directory))) return [];
+  if (!(await pathExists(directory))) return [];
   const files: string[] = [];
   const entries = await opendir(directory);
   for await (const entry of entries) {
@@ -86,7 +77,7 @@ export async function selectOrphanSessionDirectories(
   sessionsRoot: string,
   existingMasterIds: ReadonlySet<string>,
 ): Promise<string[]> {
-  if (!(await exists(sessionsRoot))) return [];
+  if (!(await pathExists(sessionsRoot))) return [];
   const orphans: string[] = [];
   const entries = await opendir(sessionsRoot);
   for await (const entry of entries) {
@@ -137,7 +128,7 @@ export async function cleanOrphanHistoryFiles(
   options: OrphanCleanupOptions = {},
 ): Promise<string[]> {
   const root = historyDirectory(agentDir);
-  if (!(await exists(root))) return [];
+  if (!(await pathExists(root))) return [];
   const orphans: string[] = [];
   const entries = await opendir(root);
   for await (const entry of entries) {

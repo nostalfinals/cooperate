@@ -1,10 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentDefinition, DefinitionCatalog } from "../../src/catalog/definitions.ts";
 import { SubagentService } from "../../src/subagent/service.ts";
 import { SubagentHistory } from "../../src/session/history.ts";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 import type { SubagentInvocation, SubagentRun } from "../../src/runtime/types.ts";
 import type { SessionRecord, SessionStore } from "../../src/session/types.ts";
+
+const temporaryDirectories: string[] = [];
+afterEach(async () => Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
 const definition = (name = "worker"): AgentDefinition => ({
   name,
@@ -22,9 +28,11 @@ const catalog: DefinitionCatalog = {
   definitionsPath: "/defs",
 };
 
-function harness(options: { fail?: Error; output?: unknown[] } = {}) {
+async function harness(options: { fail?: Error; output?: unknown[] } = {}) {
   const records = new Map<string, SessionRecord>();
-  const history = new SubagentHistory("", "master-1");
+  const agentDir = await mkdtemp(join(tmpdir(), "cooperate-history-record-"));
+  temporaryDirectories.push(agentDir);
+  const history = new SubagentHistory(agentDir, "master-1");
   const store: SessionStore = {
     create: vi.fn(async () => {
       const record = {
@@ -68,7 +76,7 @@ function harness(options: { fail?: Error; output?: unknown[] } = {}) {
 
 describe("history recording on run completion", () => {
   it("records a finished top-level run with snapshot, result, and endCount", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.service.run(
       { agent: "worker", task: "do the thing", prompt: "do it now" },
       { cwd: "/project", creatorModel: {} },
@@ -86,7 +94,7 @@ describe("history recording on run completion", () => {
   });
 
   it("records failed runs too", async () => {
-    const h = harness({ fail: new Error("boom") });
+    const h = await harness({ fail: new Error("boom") });
     await expect(h.service.run(
       { agent: "worker", task: "t", prompt: "p" },
       { cwd: "/project", creatorModel: {} },
@@ -96,7 +104,7 @@ describe("history recording on run completion", () => {
   });
 
   it("writes only a completion boundary for nested services", async () => {
-    const h = harness();
+    const h = await harness();
     const coordinator = new StructuredCoordinator(3);
     const parent = coordinator.start({ sessionId: "session-parent", agent: "worker", task: "parent" });
     const nested = new SubagentService({
@@ -123,7 +131,7 @@ describe("history recording on run completion", () => {
   });
 
   it("resolves nested subagents through the recursive snapshot", async () => {
-    const h = harness();
+    const h = await harness();
     const nested = await h.store.create();
     const childId = "c0ffee00";
     const child = Object.freeze({
@@ -168,7 +176,7 @@ describe("history recording on run completion", () => {
   });
 
   it("truncates a shared session per nested subagent boundary", async () => {
-    const h = harness();
+    const h = await harness();
     const shared = await h.store.create();
     const childA = "aaaa0001";
     const childB = "bbbb0002";

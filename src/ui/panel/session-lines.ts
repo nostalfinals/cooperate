@@ -72,7 +72,6 @@ export function entryDisplayText(entry: SessionTreeNode["entry"], theme: Theme, 
         if (text) return label + text;
         if (message.stopReason === "aborted") return label + theme.fg("muted", "(aborted)");
         if (message.errorMessage) return label + theme.fg("error", normalize(message.errorMessage));
-        // return label + theme.fg("muted", "(no content)");
         return "";
       }
       if (message.role === "toolResult") {
@@ -87,15 +86,13 @@ export function entryDisplayText(entry: SessionTreeNode["entry"], theme: Theme, 
     case "compaction":
       return theme.fg("borderAccent", `[compaction: ${Math.round(entry.tokensBefore / 1000)}k tokens]`);
     case "custom_message":
-      // return theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(extractText(entry.content));
       return "";
     case "model_change":
       return theme.fg("dim", `[model: ${entry.modelId}]`);
     case "thinking_level_change":
       return theme.fg("dim", `[thinking: ${entry.thinkingLevel}]`);
     default:
-      // return theme.fg("dim", `[${entry.type}]`);
-      return ""
+      return "";
   }
 }
 

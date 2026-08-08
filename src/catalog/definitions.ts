@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseDocument } from "yaml";
 import { CatalogError, type CooperateConfig, type DefinitionModel, type ThinkingLevel } from "./types.ts";
+import { errorCode, errorMessage, isRecord } from "./validation.ts";
 
 export type SystemPromptMode = "append" | "override";
 
@@ -42,18 +43,6 @@ const DEFINITION_CONFIG_FIELDS = new Set([
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function errorCode(error: unknown): string | undefined {
-  return isRecord(error) && typeof error.code === "string" ? error.code : undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 interface ExtractedFrontmatter {
   yaml: string;

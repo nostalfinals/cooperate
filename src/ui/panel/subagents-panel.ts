@@ -1,4 +1,4 @@
-import { Container, type Component } from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 import type { PanelContext, PanelOptions, PanelView } from "./types.ts";
 import { ListView } from "./list.ts";
 import { DetailView } from "./detail.ts";

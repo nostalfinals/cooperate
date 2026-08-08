@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { StructuredCoordinator } from "../../src/subagent/coordinator.ts";
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 describe("StructuredCoordinator", () => {
   it("allocates collision-checked transient IDs, enforces global session locks, and releases both at terminal completion", async () => {
     const ids = ["deadbeef", "deadbeef", "cafebabe"];

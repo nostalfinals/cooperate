@@ -28,7 +28,7 @@ export class ConfirmView implements PanelView {
     }
   }
 
-  render(width: number): Container {
+  render(_width: number): Container {
     const theme = this.ctx.theme;
     const snapshot = this.ctx.detailSnapshot();
     const lines: string[] = [];
