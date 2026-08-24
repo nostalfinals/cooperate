@@ -46,7 +46,7 @@ export async function loadCatalog(options: CatalogLoadOptions): Promise<Definiti
 
 export function formatDefinitionDiscovery(definitions: readonly { name: string; description: string }[]): string {
   if (definitions.length === 0) return "No subagent is defined yet";
-  return `Available subagent definitions:\n\n${definitions.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`;
+  return `Available subagent definitions:\n${definitions.map((item) => `- ${item.name}: ${item.description}`).join("\n")}`;
 }
 
 export function createCallerCatalog(

@@ -35,6 +35,7 @@ export function injectDefinitionDiscovery(
   // replace that scope with its root catalog.
   if (
     systemPrompt.includes("No subagent is defined yet")
+    || systemPrompt.includes("Available subagent definitions:\n-")
     || systemPrompt.includes("Available subagent definitions:\n\n-")
   ) return systemPrompt;
 
