@@ -61,7 +61,7 @@ Each file is a Markdown document with a YAML frontmatter block and a body. The f
 | --- | --- | --- | --- |
 | `name` | yes | — | Unique definition name matching `^[A-Za-z0-9_-]+$`. |
 | `description` | yes | — | Nonempty description shown to the caller. |
-| `tools` | no | empty (no tools allowed) | Comma-separated tool allowlist, e.g. `bash, read`. `*` allows all tools; `-name` removes a tool from that set (exclusions are only allowed together with `*`). |
+| `tools` | no | empty (no tools allowed) | Comma-separated tool allowlist, e.g. `bash, read`. `*` inherits all tools enabled by Pi; it does not enable optional built-ins such as `find` or `grep`. Name an optional built-in explicitly to enable it. `-name` removes a tool from the wildcard set (exclusions are only allowed together with `*`). |
 | `subagents` | no | empty (cannot spawn subagents) | Comma-separated names of definitions this subagent may spawn, e.g. `*, -general`. `*` allows all definitions; `-name` removes one from that set (exclusions are only allowed together with `*`). Spawning also requires `subagent` in `tools`. |
 | `model` | no | inherited from the creating session | Exact `provider/modelId` reference, e.g. `openai-codex/gpt-5.6-sol`. |
 | `thinking` | no | Pi's default thinking level | One of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |

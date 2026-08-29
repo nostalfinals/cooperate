@@ -223,10 +223,12 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       await session.bindExtensions({ mode: "print", abortHandler: () => session.abort() });
       const availableTools = session.getAllTools().map((tool) => tool.name);
       const expectedTools: string[] = hasWildcard
-        ? resolveEntries(invocation.definition.tools, availableTools)
+        // Pi registers optional built-ins such as find and grep even when they
+        // are disabled. A wildcard inherits the runtime's enabled set instead
+        // of turning every registered built-in on.
+        ? resolveEntries(invocation.definition.tools, session.getActiveToolNames())
         : [...invocation.definition.tools];
       if (hasWildcard) {
-        // A wildcard definition activates every tool available to the child runtime.
         session.setActiveToolsByName(expectedTools);
       }
       exactTools(
