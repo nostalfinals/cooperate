@@ -5,8 +5,8 @@ export function shell(theme: Theme, title: string | undefined, bodyLines: string
   const container = new Container();
   container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
   const parts: string[] = [];
-  if (title !== undefined) parts.push("", theme.fg("accent", theme.bold(title)));
-  parts.push("", ...bodyLines, "", theme.fg("dim", footer), "");
+  if (title !== undefined) parts.push(theme.fg("accent", theme.bold(title)), "");
+  parts.push(...bodyLines, "", theme.fg("dim", footer));
   container.addChild(new Text(parts.join("\n"), 1, 0));
   container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
   return container;
