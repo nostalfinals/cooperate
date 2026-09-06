@@ -136,9 +136,9 @@ class LevelTreeComponent implements Component {
     const lines: string[] = [];
     this.snapshots.forEach((snapshot, index) => {
       const last = index === this.snapshots.length - 1;
-      lines.push(nodeLine(snapshot, this.theme, 2, last));
+      lines.push(nodeLine(snapshot, this.theme, 0, last));
       if (this.expanded && isActive(snapshot)) {
-        lines.push(activityLine(snapshot, this.theme, 2, last, this.activityTitle));
+        lines.push(activityLine(snapshot, this.theme, 0, last, this.activityTitle));
       }
     });
     lines.push("", hintLine(this.theme, this.expanded));

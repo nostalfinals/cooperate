@@ -8,6 +8,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "../subagent/types.ts";
 import { renderLevelTree, renderSubagentTree } from "../ui/tree.ts";
 import { renderActivityTitle } from "./activity-title.ts";
+import { compactPreview } from "../text.ts";
 
 type ToolRenderContextArg = Parameters<NonNullable<ToolDefinition["renderResult"]>>[3];
 
@@ -65,10 +66,13 @@ export function renderResult(
     }
     const snapshot = details?.snapshot;
     const asyncRun = details?.async === true || (context.args as { async?: boolean }).async === true;
-    if (snapshot && !asyncRun) {
-      return renderSubagentTree(snapshot, theme, options.expanded, renderActivityTitle);
+    if (!snapshot) return new Text("", 0, 0);
+    if (asyncRun) {
+      const text = theme.fg("accent", snapshot.agent)
+        + theme.fg("muted", ` · ${compactPreview(snapshot.task, 80)}`);
+      return new Text("\n" + text, 0, 0);
     }
-    return new Text("", 0, 0);
+    return renderSubagentTree(snapshot, theme, options.expanded, renderActivityTitle);
   }
 
   if (action === "wait") {
