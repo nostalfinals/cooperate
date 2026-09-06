@@ -4,7 +4,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { CallerCatalog } from "../catalog/types.ts";
-import type { RunEnvironment, RunRequest, SubagentSnapshot } from "../subagent/types.ts";
+import { isActive, type RunEnvironment, type RunRequest, type SubagentSnapshot } from "../subagent/types.ts";
 import type { SubagentToolService } from "./types.ts";
 import { truncateForTool } from "../text.ts";
 import { actionSchema } from "./schema.ts";
@@ -29,6 +29,11 @@ export interface SubagentToolResolver {
 
 type ToolDependencies = readonly [service: SubagentToolService, caller: CallerCatalog];
 
+interface LiveRun {
+  snapshot?: SubagentSnapshot;
+  unsubscribe?: () => void;
+}
+
 export function createSubagentTool(service: SubagentToolService, caller: CallerCatalog): ToolDefinition;
 export function createSubagentTool(resolver: SubagentToolResolver): ToolDefinition;
 export function createSubagentTool(
@@ -43,10 +48,17 @@ export function createSubagentTool(
     if (!service || !catalog) throw new Error("subagent tool is unavailable outside an active session");
     return [service, catalog];
   };
+  const requireSubagentId = (params: Record<string, unknown>): string => {
+    const subagentId = params.subagentId;
+    if (typeof subagentId !== "string" || subagentId.length === 0) {
+      throw new Error(`action '${params.action}' requires subagentId`);
+    }
+    return subagentId;
+  };
   return {
     name: "subagent",
     label: "subagent",
-    description: "Run and manage configured subagents and their sessions.",
+    description: "Run and manage configured subagents and their sessions. The subagents will run in the background. You will be notified when they complete.",
     parameters: actionSchema(),
     async execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
       const [service, caller] = resolve();
@@ -63,13 +75,12 @@ export function createSubagentTool(
             latestSnapshot = snapshot;
             onUpdate?.({
               content: [],
-              details: { action, async: request.async === true, subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, snapshot },
+              details: { action, subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, snapshot },
             });
           },
         } as RunEnvironment);
         return textResult(result.result, {
           action,
-          async: request.async === true,
           subagentId: result.subagentId,
           sessionId: result.sessionId,
           snapshot: latestSnapshot,
@@ -77,27 +88,38 @@ export function createSubagentTool(
       }
       if (action === "list-definitions") return textResult(caller.discovery, { action, count: caller.definitions.length });
       if (action === "list-subagents") {
-        const entries = service.listSubagents();
-        return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
+        const all = (params as unknown as { all?: boolean }).all === true;
+        const entries = service.listSubagents(all);
+        return textResult(JSON.stringify(entries, null, 2), { action, all, count: entries.length });
       }
       if (action === "list-sessions") {
         const entries = await service.listSessions();
         return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
       }
-      if (action === "wait") {
-        const ids = (params as unknown as { subagentIds: string[] }).subagentIds;
-        let latest: readonly SubagentSnapshot[] = [];
-        await service.wait(ids, (snapshots) => {
-          latest = snapshots;
-          onUpdate?.({
-            content: [],
-            details: { action: "wait", snapshots },
-          });
-        });
-        return textResult("wait complete", { action: "wait", snapshots: latest });
+      if (action === "inspect") {
+        const subagentId = requireSubagentId(params as unknown as Record<string, unknown>);
+        const snapshot = service.snapshotOrLast(subagentId);
+        const inspection = service.inspectSubagent(subagentId);
+        return textResult(JSON.stringify(inspection, null, 2), { action, subagentId, snapshot, inspection });
+      }
+      if (action === "history") {
+        const { subagentId, messageId, offset, limit } = params as unknown as {
+          subagentId: string;
+          messageId?: string;
+          offset?: number;
+          limit?: number;
+        };
+        const page = await service.historyMessages(subagentId, { messageId, offset, limit });
+        return textResult(JSON.stringify(page, null, 2), { action, subagentId, snapshot: service.snapshotOrLast(subagentId), history: page });
+      }
+      if (action === "steer") {
+        const { subagentId, text } = params as unknown as { subagentId: string; text: string };
+        if (typeof text !== "string" || text.trim().length === 0) throw new Error("steer requires nonempty text");
+        await service.steer(subagentId, text);
+        return textResult(`Steered subagent ${subagentId}.`, { action, subagentId, snapshot: service.snapshotOrLast(subagentId) });
       }
       if (action === "cancel") {
-        const subagentId = (params as unknown as { subagentId: string }).subagentId;
+        const subagentId = requireSubagentId(params as unknown as Record<string, unknown>);
         onUpdate?.({
           content: [],
           details: { action: "cancel", snapshot: service.snapshotOrLast(subagentId) },
@@ -107,10 +129,68 @@ export function createSubagentTool(
       }
       throw new Error(`Unknown subagent action '${action}'`);
     },
-    renderCall(args, theme) {
-      return renderSubagentCall(args, theme);
+    renderCall(args, theme, context) {
+      let agent: string | undefined;
+      const params = args as { action?: string; subagentId?: string };
+      if ((params.action === "inspect" || params.action === "history" || params.action === "steer") && params.subagentId) {
+        const service = caller !== undefined
+          ? serviceOrResolver as SubagentToolService
+          : (serviceOrResolver as SubagentToolResolver).service();
+        agent = service?.snapshotOrLast(params.subagentId)?.agent;
+      }
+      const state = context.state as { details?: SubagentToolDetails };
+      return renderSubagentCall(args, theme, agent, state.details);
     },
     renderResult(result, options, theme, context) {
+      let details = result.details as SubagentToolDetails | undefined;
+      if (details?.action === "inspect" || details?.action === "history") {
+        const state = context.state as { sourceDetails?: SubagentToolDetails; details?: SubagentToolDetails };
+        if (state.sourceDetails !== details) {
+          state.sourceDetails = details;
+          // Saved tool results already contain the observation, even without rendering metadata.
+          if (!details.inspection && !details.history) {
+            try {
+              const text = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+              const observation = JSON.parse(text);
+              details = details.action === "inspect"
+                ? { ...details, inspection: observation }
+                : { ...details, history: observation };
+            } catch {
+              // Truncated JSON cannot supply a preview; retain the call metadata.
+            }
+          }
+          state.details = details;
+          // Pi renders the header before the result; refresh it with the actual page range.
+          queueMicrotask(context.invalidate);
+        }
+        details = state.details;
+        result = { ...result, details };
+      }
+      if (details?.action === "run" && details.subagentId && !context.isError) {
+        const service = caller !== undefined
+          ? serviceOrResolver as SubagentToolService
+          : (serviceOrResolver as SubagentToolResolver).service();
+        const state = context.state as { liveRun?: LiveRun };
+        if (!state.liveRun && service) {
+          const subagentId = details.subagentId;
+          const live: LiveRun = { snapshot: service.snapshotOrLast(subagentId) ?? details.snapshot };
+          state.liveRun = live;
+          if (live.snapshot && isActive(live.snapshot)) {
+            live.unsubscribe = service.subscribe(() => {
+              const snapshot = service.snapshotOrLast(subagentId);
+              if (snapshot) live.snapshot = snapshot;
+              if (!snapshot || !isActive(snapshot)) {
+                live.unsubscribe?.();
+                live.unsubscribe = undefined;
+              }
+              context.invalidate();
+            });
+          }
+        }
+        if (state.liveRun?.snapshot) {
+          result = { ...result, details: { ...details, snapshot: state.liveRun.snapshot } };
+        }
+      }
       return renderSubagentResult(result, options, theme, context);
     },
   };

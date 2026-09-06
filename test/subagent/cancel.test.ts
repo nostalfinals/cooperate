@@ -41,6 +41,7 @@ function harness() {
   const messenger: Messenger = {
     waitForStartupCommit: vi.fn(() => new Promise<void>(() => {})),
     send: vi.fn(async (notice) => { notices.push(notice); }),
+    sendReminder: vi.fn(async () => undefined),
   };
   const service = new SubagentService({
     catalog, store, runtimeFactory: { start: vi.fn(async () => run) }, messenger,
@@ -54,7 +55,7 @@ describe("single-subagent cancel", () => {
   it("settles without waiting on an uncommitted startup (regression: cancelled UI hung)", async () => {
     const h = harness();
     const started = await h.service.run(
-      { agent: "worker", task: "cancel", prompt: "cancel", async: true },
+      { agent: "worker", task: "cancel", prompt: "cancel", },
       { cwd: "/project", creatorModel: {}, toolCallId: "call-1" },
     );
     const cancelPromise = h.service.cancel(started.subagentId!);

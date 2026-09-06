@@ -251,6 +251,13 @@ export class StructuredCoordinator {
       .map((node) => this.makeSnapshot(node)));
   }
 
+  /** Terminal snapshots of this parent's own completed direct children. */
+  completedDirectChildren(parentId?: string): readonly SubagentSnapshot[] {
+    return Object.freeze([...this.completed.values()]
+      .filter((snapshot) => snapshot.parentId === parentId)
+      .sort((left, right) => left.startedAt - right.startedAt));
+  }
+
   isSessionLocked(sessionId: string): boolean {
     return this.locks.has(sessionId);
   }

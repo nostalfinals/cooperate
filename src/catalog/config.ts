@@ -2,12 +2,15 @@ import { readFile } from "node:fs/promises";
 import { CatalogError, type CooperateConfig } from "./types.ts";
 import { errorCode, errorMessage, isRecord } from "./validation.ts";
 
+export const DEFAULT_TIMER_REMINDER_SECONDS = 600;
+
 export const DEFAULT_CONFIG = Object.freeze({
   maxDepth: 3,
   cleanOrphanSessions: true,
+  timerReminderSeconds: DEFAULT_TIMER_REMINDER_SECONDS,
 });
 
-const CONFIG_FIELDS = new Set(["maxDepth", "cleanOrphanSessions"]);
+const CONFIG_FIELDS = new Set(["maxDepth", "cleanOrphanSessions", "timerReminderSeconds"]);
 
 export async function loadConfig(configPath: string): Promise<CooperateConfig> {
   let source: string;
@@ -42,5 +45,12 @@ export async function loadConfig(configPath: string): Promise<CooperateConfig> {
     throw new CatalogError(configPath, "cleanOrphanSessions must be a boolean");
   }
 
-  return { maxDepth: maxDepth as number, cleanOrphanSessions };
+  const timerReminderSeconds = Object.hasOwn(value, "timerReminderSeconds")
+    ? value.timerReminderSeconds
+    : DEFAULT_TIMER_REMINDER_SECONDS;
+  if (!Number.isInteger(timerReminderSeconds) || (timerReminderSeconds as number) < 1) {
+    throw new CatalogError(configPath, "timerReminderSeconds must be an integer of at least 1");
+  }
+
+  return { maxDepth: maxDepth as number, cleanOrphanSessions, timerReminderSeconds: timerReminderSeconds as number };
 }

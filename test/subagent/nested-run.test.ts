@@ -82,6 +82,7 @@ function createHarness(maxDepth = 3, parentChildren: readonly string[] = ["leaf"
     toolFactory: createSubagentTool,
     store,
     runtimeFactory,
+    messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) },
     persistOwnership: async (id) => { rootOwnership.push(id); },
     visibleSessionIds: () => rootOwnership,
   });
@@ -181,12 +182,12 @@ describe("nested subagent runs", () => {
 
   it("does not cancel a running async child when the parent's transient agent_end failure recovers", async () => {
     const h = createHarness(3, ["leaf"], true);
-    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
 
-    // Async child keeps running in the background while the parent continues its loop.
-    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task", async: true });
+    // Background child keeps running while the parent continues its loop.
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
     const childRun = h.runs[1]!;
 
     // Transient agent_end failure: pi will auto-retry, so the child must survive.
@@ -195,20 +196,17 @@ describe("nested subagent runs", () => {
 
     h.releaseParent();
     h.releaseChild();
-    await parentPending;
+    await vi.waitFor(() => expect(h.service.snapshotRoots()[0]).toMatchObject({ state: "finished", children: [expect.objectContaining({ state: "finished" })] }));
     expect(childRun.abort).not.toHaveBeenCalled();
-    const root = h.service.snapshotRoots()[0]!;
-    expect(root).toMatchObject({ state: "finished" });
-    expect(root.children[0]).toMatchObject({ state: "finished" });
   });
 
   it("cancels a still-running async child once the parent's failure is confirmed", async () => {
     const h = createHarness(3, ["leaf"], true);
-    const parentPending = h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "parent", task: "parent task", prompt: "parent task" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.invocations).toHaveLength(1));
     const parentInvocation = h.invocations[0]!;
 
-    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task", async: true });
+    await executeNested(parentInvocation, { action: "run", agent: "leaf", task: "leaf task", prompt: "leaf task" });
     const childRun = h.runs[1]!;
 
     // Transient agent_end failure alone must not cancel the child.
@@ -218,8 +216,7 @@ describe("nested subagent runs", () => {
     // Retries exhausted: the parent's prompt now fails for real.
     h.setFailParent(true);
     h.releaseParent();
-    await expect(parentPending).rejects.toThrow();
-    expect(childRun.abort).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(childRun.abort).toHaveBeenCalledOnce());
 
     await vi.waitFor(() => {
       const root = h.service.snapshotRoots()[0]!;

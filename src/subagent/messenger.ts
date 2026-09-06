@@ -1,7 +1,8 @@
-import { truncateHead, truncateTail, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateHead, truncateTail, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { completionTitle } from "./result.ts";
 
 export const COMPLETION_MESSAGE = "subagent";
+export const REMINDER_MESSAGE = "subagent-reminder";
 
 export interface CompletionNotice {
   agent: string;
@@ -14,9 +15,18 @@ export interface CompletionNotice {
   elapsedMs: number;
 }
 
+/** Periodic nudge about still-running subagents; shown to the caller model but not rendered to the user. */
+export interface ReminderNotice {
+  text: string;
+  elapsedMs?: number;
+  /** The direct children currently due for a nudge. */
+  subagentIds?: readonly string[];
+}
+
 export interface Messenger {
   waitForStartupCommit(toolCallId: string): Promise<void>;
   send(notice: CompletionNotice): Promise<void>;
+  sendReminder(reminder: ReminderNotice): Promise<void>;
 }
 
 interface Deferred {
@@ -43,12 +53,30 @@ function completionContent(notice: CompletionNotice): string {
   return bounded(content);
 }
 
+function reminderContent(reminder: ReminderNotice): string {
+  return bounded(reminder.text);
+}
+
+/**
+ * Decide how a message enters the caller's agent loop.
+ *
+ * An idle loop never drains its steering queue, so messages for an idle agent
+ * must be delivered as follow-ups, which append them and start a new turn
+ * instead of parking them in the steer queue forever.
+ */
+function selectDelivery(isIdle: boolean, ending: boolean): "steer" | "followUp" {
+  if (isIdle || ending) return "followUp";
+  return "steer";
+}
+
 export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
   let busy = false;
   let ending = false;
   let queuedBatch: { notices: CompletionNotice[]; content: { type: "text"; text: string } } | undefined;
+  let lastCtx: Pick<ExtensionContext, "isIdle"> | undefined;
   const commits = new Map<string, Deferred>();
 
+  const isIdle = (): boolean => (lastCtx ? lastCtx.isIdle() : !busy);
   const deliver = (notice: CompletionNotice, deliverAs: "steer" | "followUp") => {
     pi.sendMessage({
       customType: COMPLETION_MESSAGE,
@@ -61,6 +89,7 @@ export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
     });
   };
   const queueBusy = (notice: CompletionNotice) => {
+    const deliverAs = selectDelivery(isIdle(), ending);
     if (queuedBatch) {
       queuedBatch.notices.push(notice);
       queuedBatch.content.text = bounded(`${queuedBatch.content.text}\n\n${completionContent(notice)}`);
@@ -77,28 +106,38 @@ export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
       display: true,
       details: batch.notices,
     }, {
-      deliverAs: ending ? "followUp" : "steer",
+      deliverAs,
       triggerTurn: true,
     });
   };
 
-  pi.on("agent_start", () => {
+  const captureCtx = (ctx: Pick<ExtensionContext, "isIdle"> | undefined) => {
+    if (ctx) lastCtx = ctx;
+  };
+  pi.on("agent_start", (_event, ctx) => {
+    captureCtx(ctx);
     busy = true;
     ending = false;
   });
-  pi.on("agent_end", () => { ending = true; });
-  pi.on("agent_settled", () => {
+  pi.on("agent_end", (_event, ctx) => {
+    captureCtx(ctx);
+    ending = true;
+  });
+  pi.on("agent_settled", (_event, ctx) => {
+    captureCtx(ctx);
     busy = false;
     ending = false;
   });
-  pi.on("message_start", (event) => {
+  pi.on("message_start", (event, ctx) => {
+    captureCtx(ctx);
     const message = event.message as { role?: string; customType?: string; details?: unknown };
     if (message.role === "custom" && message.customType === COMPLETION_MESSAGE
       && message.details === queuedBatch?.notices) {
       queuedBatch = undefined;
     }
   });
-  pi.on("message_end", (event) => {
+  pi.on("message_end", (event, ctx) => {
+    captureCtx(ctx);
     const message = event.message as { role?: string; toolName?: string; toolCallId?: string };
     if (message.role !== "toolResult" || message.toolName !== "subagent" || typeof message.toolCallId !== "string") return;
     const pending = commits.get(message.toolCallId);
@@ -117,12 +156,22 @@ export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
       return pending.promise;
     },
     async send(notice) {
-      if (busy) {
-        queueBusy(notice);
+      if (isIdle()) {
+        deliver(notice, "followUp");
         return;
       }
-      busy = true;
-      deliver(notice, "steer");
+      queueBusy(notice);
+    },
+    async sendReminder(reminder) {
+      pi.sendMessage({
+        customType: REMINDER_MESSAGE,
+        content: reminderContent(reminder),
+        display: false,
+        details: reminder,
+      }, {
+        deliverAs: selectDelivery(isIdle(), ending),
+        triggerTurn: true,
+      });
     },
   };
 }
@@ -145,5 +194,10 @@ export class DeferredMessenger implements Messenger {
   async send(notice: CompletionNotice): Promise<void> {
     await this.ready.promise;
     await this.messenger!.send(notice);
+  }
+
+  async sendReminder(reminder: ReminderNotice): Promise<void> {
+    await this.ready.promise;
+    await this.messenger!.sendReminder(reminder);
   }
 }

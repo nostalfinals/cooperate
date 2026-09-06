@@ -50,6 +50,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
   return (pi: ExtensionAPI) => {
     let state: SessionCatalogState | undefined;
     let sessionGeneration = 0;
+    let callerWait: AbortController | undefined;
     const messenger = createCompletionMessenger(pi);
     const runOrphanSessionCleanup = async (options: {
       agentDir: string;
@@ -114,6 +115,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("input", (event) => {
+      callerWait?.abort();
       // Only a user prompt starts a new round; wake-ups from subagent completion
       // messages must keep the finished subagents visible in /subagents.
       if (event.source === "interactive") state?.service?.clearCompleted();
@@ -186,8 +188,23 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("agent_end", async (event, ctx) => {
-      if (!isAbortedAgentEnd(event.messages) && !ctx.signal?.aborted) return;
-      await state?.service.cancelActive("main agent interrupted");
+      const service = state?.service;
+      if (!service) return;
+      const signal = ctx.signal;
+      if (!isAbortedAgentEnd(event.messages) && !signal?.aborted && !ctx.hasPendingMessages()) {
+        // Keep Pi's Working row and abort signal alive until there is news to process.
+        callerWait = new AbortController();
+        try {
+          await service.waitForDescendantProgress(signal
+            ? AbortSignal.any([signal, callerWait.signal])
+            : callerWait.signal);
+        } finally {
+          callerWait = undefined;
+        }
+      }
+      if (isAbortedAgentEnd(event.messages) || signal?.aborted) {
+        await service.cancelActive("main agent interrupted");
+      }
     });
 
     pi.on("session_before_tree", async () => {

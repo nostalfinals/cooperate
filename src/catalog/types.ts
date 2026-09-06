@@ -3,6 +3,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 export interface CooperateConfig {
   maxDepth: number;
   cleanOrphanSessions: boolean;
+  /** Period of the "still running" subagent reminders, in seconds; defaults to 600 (10 minutes). */
+  timerReminderSeconds?: number;
 }
 
 export interface DefinitionModel {

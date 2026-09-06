@@ -28,6 +28,7 @@ interface ServicesLike {
 
 interface SessionLike {
   readonly messages: unknown[];
+  readonly isStreaming?: boolean;
   getAllTools(): Array<{ name: string }>;
   getActiveToolNames(): string[];
   setActiveToolsByName(toolNames: string[]): void;
@@ -259,7 +260,12 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       },
       messagesSinceStart: () => session.messages.slice(startIndex),
       getToolDefinition: (name) => session.getToolDefinition?.(name),
-      steer: (text) => session.steer?.(text) ?? Promise.resolve(),
+      steer: async (text) => {
+        // An idle loop never drains its steering queue; deliver the message as a
+        // new prompt so the loop actually runs instead of parking the text.
+        if (session.isStreaming) await session.steer?.(text);
+        else await session.prompt(text);
+      },
       getSteeringMessages: () => session.getSteeringMessages?.() ?? [],
       clearSteering: () => session.clearQueue?.(),
     };
