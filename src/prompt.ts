@@ -21,7 +21,8 @@ function nativeSuffixStart(systemPrompt: string, options: BuildSystemPromptOptio
 /** Wrap a definition body in its standalone role block, or nothing when the body is blank. */
 export function subagentRoleBlock(body: string): string | undefined {
   if (body.trim().length === 0) return undefined;
-  return `<subagent_role>\n${body}\n</subagent_role>`;
+  const content = body.replace(/^(?:\r?\n)+/, "").replace(/(?:\r?\n)+$/, "");
+  return `<subagent_role>\n${content}\n</subagent_role>`;
 }
 
 /** Insert caller discovery at the front of Pi's native append-system slot. */

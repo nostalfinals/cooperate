@@ -297,9 +297,9 @@ describe("Pi child runtime adapter", () => {
       task: "task",
     });
 
-    await start({ ...baseDefinition, tools: [], body: "Act as a focused worker." });
+    await start({ ...baseDefinition, tools: [], body: "\nAct as a focused worker.\r\nStay concise.\n" });
     expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      "global", expect.stringContaining("Act as a focused worker."),
+      "global", "<subagent_role>\nAct as a focused worker.\r\nStay concise.\n</subagent_role>",
     ]);
     const handlers = new Map<string, (...args: any[]) => unknown>();
     resourceOptions?.extensionFactories?.[0]?.factory({ on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler) });
