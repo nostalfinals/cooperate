@@ -1,5 +1,38 @@
 import type { SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { compactPreview } from "../text.ts";
+import type { SubagentSnapshot } from "./types.ts";
+
+export interface SubagentInspection {
+  subagentId: string;
+  sessionId: string;
+  agent: string;
+  task: string;
+  state: SubagentSnapshot["state"];
+  elapsedMs: number;
+  model?: string;
+  thinking?: string;
+  activity?: SubagentSnapshot["activity"];
+  steering: readonly string[];
+  lastMessage?: MessageSummary;
+  result?: string;
+}
+
+export interface SubagentHistoryPage {
+  subagentId: string;
+  sessionId: string;
+  total: number;
+  offset: number;
+  limit: number;
+  messages: readonly MessageSummary[];
+}
+
+export interface SubagentHistoryMessage {
+  subagentId: string;
+  sessionId: string;
+  message: string;
+}
+
+export type SubagentHistoryResult = SubagentHistoryPage | SubagentHistoryMessage;
 
 export type MessageKind = "text" | "tool-call" | "custom" | "other";
 

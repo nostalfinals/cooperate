@@ -7,7 +7,7 @@ import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
 import type { SubagentHistory } from "../session/history.ts";
 import { SubagentHistoryView } from "../session/history-view.ts";
-import { describeLastMessage, flattenTree, messageContent, summarizeEntries } from "./messages.ts";
+import { describeLastMessage, flattenTree, messageContent, summarizeEntries, type SubagentInspection, type SubagentHistoryResult } from "./messages.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
 import type { SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
@@ -71,6 +71,7 @@ export class SubagentService {
   private disposed = false;
   private reminderTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly remindedPeriods = new Map<string, number>();
+  private readonly reminderWaiters = new Set<() => void>();
   private readonly timerReminderIntervalMs: number;
 
   constructor(options: SubagentServiceOptions, records = new Map<string, SessionRecord>()) {
@@ -261,11 +262,11 @@ export class SubagentService {
   }
 
   snapshotOrLast(subagentId: string): SubagentSnapshot | undefined {
-    return this.coordinator.snapshotOrLast(subagentId);
+    return this.coordinator.snapshotOrLast(subagentId) ?? this.historyView.record(subagentId)?.snapshot;
   }
 
   /** Current state of a direct child, including its latest output and pending steering. */
-  inspectSubagent(subagentId: string): Record<string, unknown> {
+  inspectSubagent(subagentId: string): SubagentInspection {
     const snapshot = this.requireDirectSnapshot(subagentId);
     const steering = this.getSteeringMessages(subagentId);
     const lastMessage = isActive(snapshot)
@@ -295,7 +296,7 @@ export class SubagentService {
   async historyMessages(
     subagentId: string,
     options: { offset?: number; limit?: number; messageId?: string } = {},
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SubagentHistoryResult> {
     const snapshot = this.requireDirectSnapshot(subagentId);
     const entries = await this.historyEntries(subagentId, snapshot);
     if (options.messageId !== undefined) {
@@ -326,7 +327,7 @@ export class SubagentService {
   }
 
   private requireDirectSnapshot(subagentId: string): SubagentSnapshot {
-    const snapshot = this.coordinator.snapshotOrLast(subagentId);
+    const snapshot = this.snapshotOrLast(subagentId);
     if (!snapshot || snapshot.parentId !== this.parentId) {
       throw new Error(`Subagent '${subagentId}' is not a direct child of this agent`);
     }
@@ -394,9 +395,19 @@ export class SubagentService {
     return this.coordinator.waitForDescendants(this.parentId);
   }
 
-  async waitForDescendantProgress(): Promise<void> {
+  async waitForDescendantProgress(signal?: AbortSignal): Promise<void> {
     const active = [...this.active.values()];
-    if (active.length > 0) await Promise.race(active.map((handle) => handle.done));
+    if (active.length === 0 || signal?.aborted) return;
+    let wake!: () => void;
+    const reminderOrAbort = new Promise<void>((resolve) => { wake = resolve; });
+    this.reminderWaiters.add(wake);
+    signal?.addEventListener("abort", wake, { once: true });
+    try {
+      await Promise.race([...active.map((handle) => handle.done), reminderOrAbort]);
+    } finally {
+      this.reminderWaiters.delete(wake);
+      signal?.removeEventListener("abort", wake);
+    }
   }
 
   snapshotRoots(): readonly SubagentSnapshot[] {
@@ -442,7 +453,9 @@ export class SubagentService {
 
   private dispatchReminder(reminder: ReminderNotice): void {
     // Reminders are best-effort nudges; delivery failures must not break the run.
-    void this.messenger?.sendReminder(reminder).catch(() => undefined);
+    void this.messenger?.sendReminder(reminder).catch(() => undefined).finally(() => {
+      for (const wake of this.reminderWaiters) wake();
+    });
   }
 
   private activeDirectChildren(): readonly SubagentSnapshot[] {

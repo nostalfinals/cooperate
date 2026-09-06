@@ -11,6 +11,8 @@ import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 import { createCallerCatalog } from "../../src/catalog/catalog.ts";
 import { SubagentHistory } from "../../src/session/history.ts";
 import { messageContent, summarizeEntries } from "../../src/subagent/messages.ts";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import * as tree from "../../src/ui/tree.ts";
 
 const temporaryDirectories: string[] = [];
 afterAll(async () => Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
@@ -104,6 +106,52 @@ async function harness(config: { timerReminderSeconds?: number } = {}): Promise<
   };
 }
 
+describe("live run rendering", () => {
+  it("refreshes the returned run row on child activity and completion without changing its stored result", async () => {
+    const h = await harness();
+    const result = await h.tool.execute("call", { action: "run", agent: "worker", task: "work", prompt: "work" }, undefined, undefined, { cwd: "/", model: {} } as never);
+    const stored = structuredClone(result);
+    const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+    const invalidate = vi.fn();
+    const context = { args: { action: "run" }, state: {}, invalidate, isError: false };
+    const render = vi.spyOn(tree, "renderSubagentTree");
+    try {
+      const draw = () => h.tool.renderResult!(result, { expanded: false, isPartial: false }, theme, context as never);
+      draw();
+      expect(render.mock.lastCall?.[0].state).toBe("running");
+      h.invocations[0]!.onActivity!({ toolName: "read", input: { path: "/fixture.ts" } });
+      expect(invalidate).toHaveBeenCalled();
+      draw();
+      expect(render.mock.lastCall?.[0].activity).toEqual({ toolName: "read", input: { path: "/fixture.ts" } });
+
+      invalidate.mockClear();
+      h.gates[0]!.resolve();
+      await vi.waitFor(() => expect(h.notices).toHaveLength(1));
+      expect(invalidate).toHaveBeenCalled();
+      draw();
+      expect(render.mock.lastCall?.[0].state).toBe("finished");
+      expect(result).toEqual(stored);
+
+      // Rebuilding the transcript after a new user turn must use persisted completion state.
+      h.service.clearCompleted();
+      const restoredContext = { ...context, state: {}, invalidate: vi.fn() };
+      const subscribe = vi.spyOn(h.service, "subscribe");
+      h.tool.renderResult!(stored, { expanded: false, isPartial: false }, theme, restoredContext as never);
+      expect(render.mock.lastCall?.[0].state).toBe("finished");
+      expect(subscribe).not.toHaveBeenCalled();
+      subscribe.mockRestore();
+
+      // Terminal rows keep their last snapshot but no longer subscribe to unrelated runs.
+      invalidate.mockClear();
+      await h.service.run({ agent: "worker", task: "next", prompt: "next" }, { cwd: "/", creatorModel: {} });
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      render.mockRestore();
+      await h.service.shutdown();
+    }
+  });
+});
+
 describe("list-subagents with completed history", () => {
   it("reports only active direct children by default and completed ones with all", async () => {
     const h = await harness();
@@ -154,20 +202,35 @@ describe("subagent history", () => {
 
     const page = await h.service.historyMessages(started.subagentId!);
     expect(page).toMatchObject({ total: 3, offset: 0, limit: 50 });
-    expect(page.messages).toEqual([
+    expect("messages" in page && page.messages).toEqual([
       { id: "e1", role: "user", kind: "text", preview: "please work" },
       { id: "e2", role: "assistant", kind: "tool-call", preview: expect.stringContaining("read") },
       { id: "e3", role: "assistant", kind: "text", preview: "done" },
     ]);
 
     const paged = await h.service.historyMessages(started.subagentId!, { offset: 1, limit: 1 });
-    expect(paged.messages).toEqual([{ id: "e2", role: "assistant", kind: "tool-call", preview: "read" }]);
+    expect("messages" in paged && paged.messages).toEqual([{ id: "e2", role: "assistant", kind: "tool-call", preview: "read" }]);
 
     const expanded = await h.service.historyMessages(started.subagentId!, { messageId: "e2" });
-    expect(expanded.message).toContain("read");
-    expect(expanded.message).toContain("a.ts");
+    expect("message" in expanded && expanded.message).toContain("read");
+    expect("message" in expanded && expanded.message).toContain("a.ts");
 
     await expect(h.service.historyMessages(started.subagentId!, { messageId: "nope" })).rejects.toThrow();
+
+    // The requested page extends past the end: the header must show the returned range.
+    const args = { action: "history", subagentId: started.subagentId, offset: 1, limit: 50 };
+    const result = await h.tool.execute("history", args, undefined, undefined, { cwd: "/" } as never);
+    const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+    const context = { args, state: {}, invalidate: vi.fn(), isError: false };
+    // Reconstruct an existing session row whose result predates preview metadata.
+    delete (result.details as { history?: unknown }).history;
+    const preview = h.tool.renderResult!(result, { expanded: false, isPartial: false }, theme, context as never);
+    await Promise.resolve();
+    const header = h.tool.renderCall!(args, theme, context as never).render(120).join("\n");
+    expect(header).toContain("worker");
+    expect(header).toContain("2..3");
+    expect(preview.render(120).join("\n")).toContain("done");
+    await h.service.shutdown();
   });
 
   it("serves a completed child's transcript from the truncated history view", async () => {
@@ -181,8 +244,10 @@ describe("subagent history", () => {
     h.gates[0]!.resolve();
     await vi.waitFor(() => expect(h.notices).toHaveLength(1));
 
+    h.service.clearCompleted();
+    expect(h.service.inspectSubagent(started.subagentId!)).toMatchObject({ state: "finished", agent: "worker" });
     const page = await h.service.historyMessages(started.subagentId!);
-    expect(page.messages).toEqual([
+    expect("messages" in page && page.messages).toEqual([
       { id: "e1", role: "user", kind: "text", preview: "please work" },
       { id: "e2", role: "assistant", kind: "text", preview: "done" },
     ]);
@@ -213,7 +278,13 @@ describe("run reminders", () => {
       const h = await harness({ timerReminderSeconds: 60 });
       const started = await h.service.run({ agent: "worker", task: "work", prompt: "work" }, { cwd: "/", creatorModel: {} });
 
-      await vi.advanceTimersByTimeAsync(60 * 1000);
+      const progress = vi.fn();
+      const waiting = h.service.waitForDescendantProgress().then(progress);
+      await vi.advanceTimersByTimeAsync(59 * 1000);
+      expect(progress).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1000);
+      await waiting;
+      expect(progress).toHaveBeenCalledOnce();
       expect(h.reminders).toHaveLength(1);
       expect(h.reminders[0]).toMatchObject({ subagentIds: [started.subagentId] });
 
