@@ -44,13 +44,60 @@ function completionContent(notice: CompletionNotice): string {
 }
 
 export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
+  let busy = false;
   let ending = false;
+  let queuedBatch: { notices: CompletionNotice[]; content: { type: "text"; text: string } } | undefined;
   const commits = new Map<string, Deferred>();
 
-  pi.on("agent_start", () => { ending = false; });
-  // Registered before the structured-scope agent_end handler, this marks the
-  // logical loop end even while that later handler remains pending on children.
+  const deliver = (notice: CompletionNotice, deliverAs: "steer" | "followUp") => {
+    pi.sendMessage({
+      customType: COMPLETION_MESSAGE,
+      content: completionContent(notice),
+      display: true,
+      details: notice,
+    }, {
+      deliverAs,
+      triggerTurn: true,
+    });
+  };
+  const queueBusy = (notice: CompletionNotice) => {
+    if (queuedBatch) {
+      queuedBatch.notices.push(notice);
+      queuedBatch.content.text = bounded(`${queuedBatch.content.text}\n\n${completionContent(notice)}`);
+      return;
+    }
+    const batch = {
+      notices: [notice],
+      content: { type: "text" as const, text: completionContent(notice) },
+    };
+    queuedBatch = batch;
+    pi.sendMessage({
+      customType: COMPLETION_MESSAGE,
+      content: [batch.content],
+      display: true,
+      details: batch.notices,
+    }, {
+      deliverAs: ending ? "followUp" : "steer",
+      triggerTurn: true,
+    });
+  };
+
+  pi.on("agent_start", () => {
+    busy = true;
+    ending = false;
+  });
   pi.on("agent_end", () => { ending = true; });
+  pi.on("agent_settled", () => {
+    busy = false;
+    ending = false;
+  });
+  pi.on("message_start", (event) => {
+    const message = event.message as { role?: string; customType?: string; details?: unknown };
+    if (message.role === "custom" && message.customType === COMPLETION_MESSAGE
+      && message.details === queuedBatch?.notices) {
+      queuedBatch = undefined;
+    }
+  });
   pi.on("message_end", (event) => {
     const message = event.message as { role?: string; toolName?: string; toolCallId?: string };
     if (message.role !== "toolResult" || message.toolName !== "subagent" || typeof message.toolCallId !== "string") return;
@@ -70,15 +117,12 @@ export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
       return pending.promise;
     },
     async send(notice) {
-      pi.sendMessage({
-        customType: COMPLETION_MESSAGE,
-        content: completionContent(notice),
-        display: true,
-        details: { ...notice },
-      }, {
-        deliverAs: ending ? "followUp" : "steer",
-        triggerTurn: true,
-      });
+      if (busy) {
+        queueBusy(notice);
+        return;
+      }
+      busy = true;
+      deliver(notice, "steer");
     },
   };
 }

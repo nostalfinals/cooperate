@@ -147,7 +147,7 @@ export class SubagentService {
           // recovers from within this same prompt() call. Descendants (e.g. background
           // async children) must neither be cancelled nor awaited here; only the
           // confirmed-failure path in executeRun cancels them.
-          if (terminal.state !== "failed") await this.coordinator.waitForDescendants(subagentId);
+          if (terminal.state !== "failed") await nestedService.waitForDescendantProgress();
         },
         onActivity: (activity) => this.coordinator.setActivity(subagentId, activity),
       });
@@ -349,6 +349,11 @@ export class SubagentService {
 
   waitForDescendants(): Promise<void> {
     return this.coordinator.waitForDescendants(this.parentId);
+  }
+
+  async waitForDescendantProgress(): Promise<void> {
+    const active = [...this.active.values()];
+    if (active.length > 0) await Promise.race(active.map((handle) => handle.done));
   }
 
   snapshotRoots(): readonly SubagentSnapshot[] {

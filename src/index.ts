@@ -186,26 +186,8 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
     });
 
     pi.on("agent_end", async (event, ctx) => {
-      const service = state?.service;
-      if (!service) return;
-      const reason = "main agent interrupted";
-      if (isAbortedAgentEnd(event.messages) || ctx.signal?.aborted) {
-        await service.cancelActive(reason);
-        return;
-      }
-      const signal = ctx.signal;
-      let interrupted = false;
-      const onAbort = () => { interrupted = true; };
-      signal?.addEventListener("abort", onAbort, { once: true });
-      try {
-        await Promise.race([
-          service.waitForDescendants(),
-          new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true })),
-        ]);
-      } finally {
-        signal?.removeEventListener("abort", onAbort);
-      }
-      if (interrupted) await service.cancelActive(reason);
+      if (!isAbortedAgentEnd(event.messages) && !ctx.signal?.aborted) return;
+      await state?.service.cancelActive("main agent interrupted");
     });
 
     pi.on("session_before_tree", async () => {

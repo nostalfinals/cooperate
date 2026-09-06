@@ -33,14 +33,30 @@ export function stateMark(state: ActiveSubagentState | TerminalSubagentState, th
   }
 }
 
+function isExpandable(notice: CompletionNotice): boolean {
+  return notice.state !== "cancelled"
+    && (notice.state === "failed" || (notice.result !== undefined && notice.result !== "<none>"));
+}
+
+function renderNotice(notice: CompletionNotice, expanded: boolean, theme: Theme): string {
+  let text = stateMark(notice.state, theme) + " " + theme.fg("accent", notice.agent)
+    + theme.fg("muted", ` · ${formatElapsed(notice.elapsedMs)}`);
+  if (notice.task) text += theme.fg("muted", ` · ${compactPreview(notice.task, 80)}`);
+  if (expanded && isExpandable(notice)) {
+    const body = notice.state === "finished" ? notice.result! : (notice.reason ?? notice.state);
+    text += `\n\n${theme.fg("customMessageText", body)}`;
+  }
+  return text;
+}
+
 export function renderCompletionMessage(
-  message: { content: string | Array<{ type: string; text?: string }>; details?: CompletionNotice },
+  message: { content: string | Array<{ type: string; text?: string }>; details?: CompletionNotice | CompletionNotice[] },
   options: { expanded: boolean; outputPad: number },
   theme: Theme,
 ): Component {
   const box = new Box(options.outputPad, 1, (text) => theme.bg("customMessageBg", text));
-  const notice = message.details;
-  if (!notice) {
+  const details = message.details;
+  if (!details) {
     const content = typeof message.content === "string"
       ? message.content
       : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
@@ -48,18 +64,11 @@ export function renderCompletionMessage(
     return box;
   }
 
-  let text = stateMark(notice.state, theme) + " " + theme.fg("accent", notice.agent)
-    + theme.fg("muted", ` · ${formatElapsed(notice.elapsedMs)}`);
-  if (notice.task) text += theme.fg("muted", ` · ${compactPreview(notice.task, 80)}`);
-  const expandable = notice.state !== "cancelled"
-    && (notice.state === "failed" || (notice.result !== undefined && notice.result !== "<none>"));
-  if (expandable) {
-    if (options.expanded) {
-      const body = notice.state === "finished" ? notice.result! : (notice.reason ?? notice.state);
-      text += `\n\n${theme.fg("customMessageText", body)}`;
-    } else {
-      text += "\n\n" + theme.fg("muted", "(ctrl+o to expand)");
-    }
+  const notices = Array.isArray(details) ? details : [details];
+  const separator = options.expanded ? "\n\n" : "\n";
+  let text = notices.map((notice) => renderNotice(notice, options.expanded, theme)).join(separator);
+  if (!options.expanded && notices.some(isExpandable)) {
+    text += "\n\n" + theme.fg("muted", "(ctrl+o to expand)");
   }
   box.addChild(new Text(text, 0, 0));
   return box;

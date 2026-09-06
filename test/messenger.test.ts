@@ -18,18 +18,47 @@ function fakePi() {
 const notice = (agent: string) => ({ agent, state: "finished" as const, subagentId: `id-${agent}`, sessionId: `session-${agent}`, result: `${agent} result`, elapsedMs: 10 });
 
 describe("parent messenger delivery", () => {
-  it("uses steer before logical end, followUp while agent_end is waiting, and keeps simultaneous completions independent", async () => {
+  it("delivers an idle completion immediately and merges busy-loop completions into one queued message", async () => {
+    const { pi, emit } = fakePi();
+    const messenger = createCompletionMessenger(pi as never);
+
+    await messenger.send(notice("one"));
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ details: notice("one") }),
+      { deliverAs: "steer", triggerTurn: true },
+    );
+
+    await emit("agent_start");
+    await messenger.send(notice("two"));
+    await messenger.send(notice("three"));
+    expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+    expect(pi.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ details: [notice("two"), notice("three")] }),
+      { deliverAs: "steer", triggerTurn: true },
+    );
+  });
+
+  it("starts a new batch after the queued completion message is inserted", async () => {
     const { pi, emit } = fakePi();
     const messenger = createCompletionMessenger(pi as never);
     await emit("agent_start");
     await messenger.send(notice("one"));
+    const details = vi.mocked(pi.sendMessage).mock.calls[0]![0].details;
+    await emit("message_start", { message: { role: "custom", customType: "subagent", details } });
     await messenger.send(notice("two"));
-    expect(pi.sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ customType: "subagent" }), { deliverAs: "steer", triggerTurn: true });
-    expect(pi.sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ content: expect.stringContaining("two result") }), { deliverAs: "steer", triggerTurn: true });
+    expect(pi.sendMessage).toHaveBeenCalledTimes(2);
+  });
 
+  it("queues completions from awaited agent_end handlers as follow-ups", async () => {
+    const { pi, emit } = fakePi();
+    const messenger = createCompletionMessenger(pi as never);
+    await emit("agent_start");
     await emit("agent_end");
-    await messenger.send(notice("three"));
-    expect(pi.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ content: expect.stringContaining("three result") }), { deliverAs: "followUp", triggerTurn: true });
+    await messenger.send(notice("one"));
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ details: [notice("one")] }),
+      { deliverAs: "followUp", triggerTurn: true },
+    );
   });
 
   it("does not release a fast completion until the matching subagent tool-result message is persisted", async () => {

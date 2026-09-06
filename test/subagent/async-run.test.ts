@@ -62,11 +62,15 @@ describe("asynchronous subagent run", () => {
     expect(started).toMatchObject({ sessionId: "session-1", subagentId: expect.stringMatching(/^[0-9a-f]{8}$/) });
     expect(h.run.prompt).toHaveBeenCalledWith("work");
     h.promptGate.resolve();
+    let progressReported = false;
+    const progress = h.service.waitForDescendantProgress().then(() => { progressReported = true; });
     await Promise.resolve();
     expect(h.notices).toEqual([]);
+    expect(progressReported).toBe(false);
 
     h.commitGate.resolve();
-    await vi.waitFor(() => expect(h.notices).toHaveLength(1));
+    await progress;
+    expect(h.notices).toHaveLength(1);
     expect(h.notices[0]).toMatchObject({ agent: "worker", state: "finished", subagentId: started.subagentId, sessionId: "session-1", result: "done" });
   });
 
