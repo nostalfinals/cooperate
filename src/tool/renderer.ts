@@ -43,6 +43,10 @@ export function renderCall(args: unknown, theme: Theme): Text {
   }
 }
 
+function errorComponent(result: AgentToolResult<unknown>, theme: Theme): Text {
+  return new Text("\n" + theme.fg("muted", errorText(result)), 0, 0);
+}
+
 function errorText(result: AgentToolResult<unknown>): string {
   return result.content
     .filter((item): item is { type: "text"; text: string } => item.type === "text")
@@ -76,12 +80,13 @@ export function renderResult(
   }
 
   if (action === "wait") {
+    if (context.isError) return errorComponent(result, theme);
     return renderLevelTree(details?.snapshots ?? [], theme, options.expanded, renderActivityTitle);
   }
 
   if (action === "cancel") {
     const snapshot = details?.snapshot;
-    if (!snapshot) return new Text("", 0, 0);
+    if (!snapshot) return context.isError ? errorComponent(result, theme) : new Text("", 0, 0);
     return renderLevelTree([snapshot], theme, options.expanded, renderActivityTitle);
   }
 
