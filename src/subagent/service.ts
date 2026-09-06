@@ -1,16 +1,19 @@
 import { createCallerCatalog } from "../catalog/catalog.ts";
+import { DEFAULT_TIMER_REMINDER_SECONDS } from "../catalog/config.ts";
 import { includesEntry, isWildcard, resolveEntries, type AgentDefinition, type DefinitionCatalog } from "../catalog/definitions.ts";
-import { type CompletionNotice, type Messenger, DeferredMessenger } from "./messenger.ts";
+import { type CompletionNotice, type Messenger, type ReminderNotice, DeferredMessenger } from "./messenger.ts";
 import { OWNERSHIP_ENTRY, ownedSessionIds } from "../session/ownership.ts";
 import { compactPreview, truncateForTool } from "../text.ts";
 import type { SessionRecord, SessionStore } from "../session/types.ts";
 import type { SubagentHistory } from "../session/history.ts";
 import { SubagentHistoryView } from "../session/history-view.ts";
+import { describeLastMessage, flattenTree, messageContent, summarizeEntries } from "./messages.ts";
 import type { ChildRuntimeFactory, SubagentRun } from "../runtime/types.ts";
-import type { SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import type { SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import type { SubagentToolFactory } from "../tool/types.ts";
 import { StructuredCoordinator } from "./coordinator.ts";
-import { completionTitle, extractFinalText } from "./result.ts";
+import { extractFinalText } from "./result.ts";
+import { isActive } from "./types.ts";
 import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot, TerminalCause } from "./types.ts";
 
 export interface SubagentServiceOptions {
@@ -41,7 +44,6 @@ interface ExecutionOutcome {
 }
 
 interface ActiveExecution {
-  readonly async: boolean;
   explicitCancel: boolean;
   suppressNotification: boolean;
   notificationSuppressed: Promise<void>;
@@ -51,6 +53,8 @@ interface ActiveExecution {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+const DEFAULT_HISTORY_PAGE_SIZE = 50;
 
 /** Caller-scoped service for blocking/async runs and direct-child management. */
 export class SubagentService {
@@ -65,10 +69,14 @@ export class SubagentService {
   private readonly historyView: SubagentHistoryView;
   private messenger?: Messenger;
   private disposed = false;
+  private reminderTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly remindedPeriods = new Map<string, number>();
+  private readonly timerReminderIntervalMs: number;
 
   constructor(options: SubagentServiceOptions, records = new Map<string, SessionRecord>()) {
     this.options = options;
     this.records = records;
+    this.timerReminderIntervalMs = (options.catalog.config.timerReminderSeconds ?? DEFAULT_TIMER_REMINDER_SECONDS) * 1000;
     this.historyView = new SubagentHistoryView(options.history, options.store);
     this.coordinator = options.coordinator ?? new StructuredCoordinator(options.catalog.config.maxDepth);
     this.parentId = options.parentId;
@@ -90,8 +98,8 @@ export class SubagentService {
     if (!definition) throw new Error(`Definition '${request.agent}' is not available to this caller`);
     if (request.task.trim().length === 0) throw new Error("task must be nonempty");
     if (request.prompt.trim().length === 0) throw new Error("prompt must be nonempty");
-    if (request.async && !this.messenger) {
-      throw new Error("asynchronous subagent startup requires a bound messenger");
+    if (!this.messenger) {
+      throw new Error("background subagent startup requires a bound messenger");
     }
     // Depth must win over session creation, ownership, and locking side effects.
     this.coordinator.assertCanStart(this.parentId);
@@ -188,7 +196,6 @@ export class SubagentService {
     let resolveNotificationSuppressed!: () => void;
     const notificationSuppressed = new Promise<void>((resolve) => { resolveNotificationSuppressed = resolve; });
     const handle: ActiveExecution = {
-      async: request.async === true,
       explicitCancel: false,
       suppressNotification: false,
       notificationSuppressed,
@@ -197,48 +204,36 @@ export class SubagentService {
     };
     this.active.set(subagentId, handle);
 
-    if (request.async) {
-      const startupCommitted = environment.toolCallId
-        ? this.messenger!.waitForStartupCommit(environment.toolCallId)
-        : Promise.resolve();
-      handle.done = this.completeAsync(handle, outcomePromise, startupCommitted)
-        .finally(() => {
-          this.active.delete(subagentId);
-          this.childServices.delete(subagentId);
-        });
-      void handle.done;
-      return {
-        sessionId: record.sessionId,
-        subagentId,
-        result: `Started background subagent ${request.agent} (subagentId=${subagentId}, sessionId=${record.sessionId})`,
-      };
-    }
-
-    handle.done = outcomePromise.then(() => undefined).finally(() => {
-      this.active.delete(subagentId);
-      this.childServices.delete(subagentId);
-    });
-    const outcome = await outcomePromise;
-    await handle.done;
-    if (outcome.error || outcome.snapshot.state !== "finished") {
-      throw new Error(`Session ${record.sessionId}: ${outcome.error?.message ?? outcome.snapshot.reason ?? outcome.snapshot.state}`, { cause: outcome.error });
-    }
+    const startupCommitted = environment.toolCallId
+      ? this.messenger.waitForStartupCommit(environment.toolCallId)
+      : Promise.resolve();
+    handle.done = this.completeAsync(handle, outcomePromise, startupCommitted)
+      .finally(() => {
+        this.active.delete(subagentId);
+        this.childServices.delete(subagentId);
+        this.refreshReminderClock();
+      });
+    void handle.done;
+    this.refreshReminderClock();
     return {
       sessionId: record.sessionId,
       subagentId,
-      result: `${completionTitle(request.agent, "finished", subagentId, record.sessionId)}\n\n${outcome.result ?? "<none>"}`,
+      result: `Started background subagent ${request.agent} (subagentId=${subagentId}, sessionId=${record.sessionId})`,
     };
   }
 
-  listSubagents(): readonly Record<string, unknown>[] {
-    return this.coordinator.directChildren(this.parentId).map((binding) => ({
+  listSubagents(all = false): readonly Record<string, unknown>[] {
+    const toEntry = (binding: SubagentSnapshot) => ({
       subagentId: binding.subagentId,
       agent: binding.agent,
       session: binding.sessionId,
       task: compactPreview(binding.task),
       state: binding.state,
       elapsedMs: binding.elapsedMs,
-    }));
+    });
+    const active = this.coordinator.directChildren(this.parentId).map(toEntry);
+    if (!all) return active;
+    return [...active, ...this.coordinator.completedDirectChildren(this.parentId).map(toEntry)];
   }
 
   async listSessions(): Promise<readonly Record<string, unknown>[]> {
@@ -256,23 +251,6 @@ export class SubagentService {
     }));
   }
 
-  async wait(
-    subagentIds: readonly string[],
-    onSnapshot?: (snapshots: readonly SubagentSnapshot[]) => void,
-  ): Promise<void> {
-    if (subagentIds.length === 0) throw new Error("subagentIds must be nonempty");
-    if (new Set(subagentIds).size !== subagentIds.length) throw new Error("subagentIds must be unique");
-    const handles = this.captureDirect(subagentIds);
-    const emit = () => onSnapshot?.(this.snapshotsFor(subagentIds));
-    const unsubscribe = onSnapshot ? this.coordinator.subscribe(emit) : undefined;
-    emit();
-    try {
-      await Promise.all(handles.map((handle) => handle.done));
-    } finally {
-      unsubscribe?.();
-    }
-  }
-
   async cancel(subagentId: string): Promise<SubagentSnapshot | undefined> {
     const [handle] = this.captureDirect([subagentId]);
     handle!.explicitCancel = true;
@@ -282,14 +260,77 @@ export class SubagentService {
     return this.coordinator.snapshotOrLast(subagentId);
   }
 
-  snapshotsFor(ids: readonly string[]): readonly SubagentSnapshot[] {
-    return ids
-      .map((id) => this.coordinator.snapshotOrLast(id))
-      .filter((snapshot): snapshot is SubagentSnapshot => snapshot !== undefined);
-  }
-
   snapshotOrLast(subagentId: string): SubagentSnapshot | undefined {
     return this.coordinator.snapshotOrLast(subagentId);
+  }
+
+  /** Current state of a direct child, including its latest output and pending steering. */
+  inspectSubagent(subagentId: string): Record<string, unknown> {
+    const snapshot = this.requireDirectSnapshot(subagentId);
+    const steering = this.getSteeringMessages(subagentId);
+    const lastMessage = isActive(snapshot)
+      ? describeLastMessage(this.runs.get(subagentId)?.messagesSinceStart() ?? [])
+      : undefined;
+    const history = this.historyView.record(subagentId);
+    return {
+      subagentId: snapshot.subagentId,
+      sessionId: snapshot.sessionId,
+      agent: snapshot.agent,
+      task: snapshot.task,
+      state: snapshot.state,
+      elapsedMs: snapshot.elapsedMs,
+      model: snapshot.model,
+      thinking: snapshot.thinking,
+      activity: snapshot.activity,
+      steering,
+      ...(lastMessage ? { lastMessage } : {}),
+      ...(history?.result !== undefined ? { result: history.result } : {}),
+    };
+  }
+
+  /**
+   * Paginated transcript of a direct child. Messages are summarized with ids;
+   * pass messageId to expand one message's full content.
+   */
+  async historyMessages(
+    subagentId: string,
+    options: { offset?: number; limit?: number; messageId?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const snapshot = this.requireDirectSnapshot(subagentId);
+    const entries = await this.historyEntries(subagentId, snapshot);
+    if (options.messageId !== undefined) {
+      const entry = entries.find((candidate) => candidate.id === options.messageId);
+      if (!entry) throw new Error(`Message '${options.messageId}' does not exist in subagent '${subagentId}'`);
+      return { subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, message: messageContent(entry) };
+    }
+    const summaries = summarizeEntries(entries);
+    const offset = Math.max(0, Math.floor(options.offset ?? 0));
+    const limit = Math.max(1, Math.floor(options.limit ?? DEFAULT_HISTORY_PAGE_SIZE));
+    return {
+      subagentId: snapshot.subagentId,
+      sessionId: snapshot.sessionId,
+      total: summaries.length,
+      offset,
+      limit,
+      messages: summaries.slice(offset, offset + limit),
+    };
+  }
+
+  private async historyEntries(subagentId: string, snapshot: SubagentSnapshot): Promise<readonly SessionEntry[]> {
+    if (isActive(snapshot)) {
+      const native = this.records.get(subagentId)?.native as { getBranch?(): readonly SessionEntry[] } | undefined;
+      return native?.getBranch?.() ?? [];
+    }
+    const tree = await this.loadHistoryTree(subagentId);
+    return tree ? flattenTree(tree) : [];
+  }
+
+  private requireDirectSnapshot(subagentId: string): SubagentSnapshot {
+    const snapshot = this.coordinator.snapshotOrLast(subagentId);
+    if (!snapshot || snapshot.parentId !== this.parentId) {
+      throw new Error(`Subagent '${subagentId}' is not a direct child of this agent`);
+    }
+    return snapshot;
   }
 
   getToolDefinition(subagentId: string, toolName: string): unknown {
@@ -325,7 +366,9 @@ export class SubagentService {
 
   async steer(subagentId: string, text: string): Promise<void> {
     const owner = this.findRunOwner(subagentId);
-    await owner?.runs.get(subagentId)?.steer?.(text);
+    const run = owner?.runs.get(subagentId);
+    if (!run) throw new Error(`Subagent '${subagentId}' is not active`);
+    await run.steer?.(text);
   }
 
   getSteeringMessages(subagentId: string): readonly string[] {
@@ -393,7 +436,75 @@ export class SubagentService {
   async shutdown(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.stopReminderClock();
     await this.cancelActive("runtime shutting down");
+  }
+
+  private dispatchReminder(reminder: ReminderNotice): void {
+    // Reminders are best-effort nudges; delivery failures must not break the run.
+    void this.messenger?.sendReminder(reminder).catch(() => undefined);
+  }
+
+  private activeDirectChildren(): readonly SubagentSnapshot[] {
+    return this.coordinator.directChildren(this.parentId).filter(isActive);
+  }
+
+  private refreshReminderClock(): void {
+    if (this.reminderTimer) {
+      clearTimeout(this.reminderTimer);
+      this.reminderTimer = undefined;
+    }
+    if (this.activeDirectChildren().length === 0) {
+      // Every direct subagent is done: reset the periodic-reminder clock.
+      this.remindedPeriods.clear();
+      return;
+    }
+    this.scheduleReminderTick();
+  }
+
+  private stopReminderClock(): void {
+    if (this.reminderTimer) {
+      clearTimeout(this.reminderTimer);
+      this.reminderTimer = undefined;
+    }
+    this.remindedPeriods.clear();
+  }
+
+  private scheduleReminderTick(): void {
+    const active = this.activeDirectChildren();
+    if (active.length === 0) {
+      this.remindedPeriods.clear();
+      return;
+    }
+    const now = Date.now();
+    const nextIn = Math.min(...active.map((snapshot) => {
+      const elapsed = Math.max(0, now - snapshot.startedAt);
+      const nextBoundary = (Math.floor(elapsed / this.timerReminderIntervalMs) + 1) * this.timerReminderIntervalMs;
+      return nextBoundary - elapsed;
+    }));
+    this.reminderTimer = setTimeout(() => {
+      this.reminderTimer = undefined;
+      void this.fireReminderTick();
+    }, Math.max(0, nextIn));
+    this.reminderTimer.unref?.();
+  }
+
+  private async fireReminderTick(): Promise<void> {
+    const due = this.activeDirectChildren().filter((snapshot) => {
+      const period = Math.floor(snapshot.elapsedMs / this.timerReminderIntervalMs);
+      if (period < 1 || (this.remindedPeriods.get(snapshot.subagentId) ?? 0) >= period) return false;
+      this.remindedPeriods.set(snapshot.subagentId, period);
+      return true;
+    });
+    if (due.length > 0) {
+      const lines = due.map((snapshot) => `- ${snapshot.agent} (subagentId=${snapshot.subagentId}) running for ${Math.floor(snapshot.elapsedMs / 60000)}m`);
+      this.dispatchReminder({
+        elapsedMs: Math.max(...due.map((snapshot) => snapshot.elapsedMs)),
+        subagentIds: due.map((snapshot) => snapshot.subagentId),
+        text: `Some time has passed and these subagents are still running:\n${lines.join("\n")}\nConsider inspecting their status and reporting progress to the user.`,
+      });
+    }
+    this.refreshReminderClock();
   }
 
   private findOwner(subagentId: string): SubagentService | undefined {

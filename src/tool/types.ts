@@ -3,9 +3,11 @@ import type { RunEnvironment, RunRequest, RunResponse, SubagentSnapshot } from "
 
 export interface SubagentToolService {
   run(request: RunRequest, environment: RunEnvironment): Promise<RunResponse>;
-  listSubagents(): readonly Record<string, unknown>[];
+  listSubagents(all?: boolean): readonly Record<string, unknown>[];
   listSessions(): Promise<readonly Record<string, unknown>[]>;
-  wait(subagentIds: readonly string[], onSnapshot?: (snapshots: readonly SubagentSnapshot[]) => void): Promise<void>;
+  inspectSubagent(subagentId: string): Record<string, unknown>;
+  historyMessages(subagentId: string, options?: { offset?: number; limit?: number; messageId?: string }): Promise<Record<string, unknown>>;
+  steer(subagentId: string, text: string): Promise<void>;
   cancel(subagentId: string): Promise<SubagentSnapshot | undefined>;
   snapshotOrLast(subagentId: string): SubagentSnapshot | undefined;
   getToolDefinition?(subagentId: string, toolName: string): unknown;

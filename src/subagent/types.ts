@@ -3,7 +3,6 @@ export interface RunRequest {
   task: string;
   prompt: string;
   sessionId?: string;
-  async?: boolean;
 }
 
 export interface RunEnvironment {

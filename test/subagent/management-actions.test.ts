@@ -32,7 +32,7 @@ function harness() {
     list: vi.fn(async () => records),
     inspect: vi.fn(async () => ({ task: "task", result: "result" })),
   };
-  const messenger: Messenger = { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) };
+  const messenger: Messenger = { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) };
   const service = new SubagentService({
     catalog, store, messenger,
     toolFactory: createSubagentTool,
@@ -54,25 +54,18 @@ function harness() {
 }
 
 describe("direct child management actions", () => {
-  it("wait captures all active direct children, succeeds across terminal outcomes, and rejects stale or duplicate IDs", async () => {
+  it("runs every subagent in the background and reports identity without waiting for completion", async () => {
     const h = harness();
-    const one = await h.service.run({ agent: "worker", task: "one", prompt: "one", async: true }, { cwd: "/", creatorModel: {} });
-    const two = await h.service.run({ agent: "worker", task: "two", prompt: "two", async: true }, { cwd: "/", creatorModel: {} });
-    const waiting = h.service.wait([one.subagentId!, two.subagentId!]);
-    let settled = false;
-    void waiting.then(() => { settled = true; });
+    const started = await h.service.run({ agent: "worker", task: "one", prompt: "one" }, { cwd: "/", creatorModel: {} });
+    expect(started).toMatchObject({ sessionId: "session-1", subagentId: expect.stringMatching(/^[0-9a-f]{8}$/) });
+    expect(h.runs[0]!.prompt).toHaveBeenCalledWith("one");
+    expect(h.service.listSubagents()).toHaveLength(1);
     h.gates[0]!.resolve();
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    h.gates[1]!.resolve();
-    await waiting;
-    await expect(h.service.wait([one.subagentId!])).rejects.toThrow();
-    await expect(h.service.wait(["00000001", "00000001"])).rejects.toThrow();
   });
 
   it("cancels one direct subtree, waits for disposal, and emits only the target's async cancellation notice", async () => {
     const h = harness();
-    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long", async: true }, { cwd: "/", creatorModel: {} });
+    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long" }, { cwd: "/", creatorModel: {} });
     await h.service.cancel(started.subagentId!);
     expect(h.runs[0]!.abort).toHaveBeenCalledOnce();
     expect(h.runs[0]!.dispose).toHaveBeenCalledOnce();
@@ -81,12 +74,12 @@ describe("direct child management actions", () => {
     await expect(h.service.cancel(started.subagentId!)).rejects.toThrow();
   });
 
-  it("dispatches wait and cancel through the complete public tool schema", async () => {
+  it("dispatches management actions through the complete public tool schema", async () => {
     const h = harness();
     const tool = createSubagentTool(h.service, createCallerCatalog(catalog));
     const schema = tool.parameters as { properties: { action: { enum?: string[] } } };
-    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["wait", "cancel"]));
-    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long", async: true }, { cwd: "/", creatorModel: {} });
+    expect(schema.properties.action.enum).toEqual(expect.arrayContaining(["run", "list-subagents", "inspect", "history", "steer", "cancel"]));
+    const started = await h.service.run({ agent: "worker", task: "long", prompt: "long" }, { cwd: "/", creatorModel: {} });
     const cancel = await tool.execute("cancel-call", { action: "cancel", subagentId: started.subagentId } as never, undefined, undefined, { cwd: "/" } as never);
     expect(cancel.content).toEqual([]);
   });

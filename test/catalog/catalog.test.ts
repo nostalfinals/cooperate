@@ -43,7 +43,7 @@ describe("loadCatalog", () => {
 
     const catalog = await loadCatalog(options);
 
-    expect(catalog.config).toEqual({ maxDepth: 3, cleanOrphanSessions: true });
+    expect(catalog.config).toEqual({ maxDepth: 3, cleanOrphanSessions: true, timerReminderSeconds: 600 });
     expect(catalog.definitions).toEqual([]);
   });
 
@@ -67,7 +67,7 @@ describe("loadCatalog", () => {
 
     const catalog = await loadCatalog(options);
 
-    expect(catalog.config).toEqual({ maxDepth: 4, cleanOrphanSessions: false });
+    expect(catalog.config).toEqual({ maxDepth: 4, cleanOrphanSessions: false, timerReminderSeconds: 600 });
     expect(catalog.definitions.map((item) => item.name)).toEqual(["scout", "worker"]);
     expect(catalog.definitions[1]).toMatchObject({
       name: "worker",
@@ -89,6 +89,9 @@ describe("loadCatalog", () => {
     ["null depth", { maxDepth: null, cleanOrphanSessions: true }],
     ["wrong cleanup type", { maxDepth: 3, cleanOrphanSessions: "yes" }],
     ["null cleanup", { maxDepth: 3, cleanOrphanSessions: null }],
+    ["zero reminder seconds", { maxDepth: 3, cleanOrphanSessions: true, timerReminderSeconds: 0 }],
+    ["fractional reminder seconds", { maxDepth: 3, cleanOrphanSessions: true, timerReminderSeconds: 2.5 }],
+    ["null reminder seconds", { maxDepth: 3, cleanOrphanSessions: true, timerReminderSeconds: null }],
   ])("rejects invalid configuration: %s", async (_label, value) => {
     const { agentDir, options } = await fixture();
     await mkdir(join(agentDir, "cooperate"), { recursive: true });

@@ -6,7 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text, type Component } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "../subagent/types.ts";
-import { renderLevelTree, renderSubagentTree } from "../ui/tree.ts";
+import { renderLevelTree } from "../ui/tree.ts";
 import { renderActivityTitle } from "./activity-title.ts";
 import { compactPreview } from "../text.ts";
 
@@ -14,10 +14,10 @@ type ToolRenderContextArg = Parameters<NonNullable<ToolDefinition["renderResult"
 
 export interface SubagentToolDetails {
   action: string;
-  async?: boolean;
   subagentId?: string;
   sessionId?: string;
   count?: number;
+  all?: boolean;
   snapshot?: SubagentSnapshot;
   snapshots?: readonly SubagentSnapshot[];
 }
@@ -27,17 +27,9 @@ export function renderCall(args: unknown, theme: Theme): Text {
   const header = theme.fg("toolTitle", theme.bold("subagent")) + " ";
   switch (action) {
     case "run": {
-      const run = args as { agent: string; async?: boolean };
-      let line = header + theme.fg("accent", `run ${run.agent}`);
-      if (run.async) line += theme.fg("muted", " (async)");
-      return new Text(line, 0, 0);
+      const run = args as { agent: string };
+      return new Text(header + theme.fg("accent", `run ${run.agent}`), 0, 0);
     }
-    case "wait":
-    case "cancel":
-    case "list-definitions":
-    case "list-subagents":
-    case "list-sessions":
-      return new Text(header + theme.fg("accent", action), 0, 0);
     default:
       return new Text(header + theme.fg("accent", action), 0, 0);
   }
@@ -69,19 +61,27 @@ export function renderResult(
       return new Text("\n" + theme.fg("muted", text), 0, 0);
     }
     const snapshot = details?.snapshot;
-    const asyncRun = details?.async === true || (context.args as { async?: boolean }).async === true;
     if (!snapshot) return new Text("", 0, 0);
-    if (asyncRun) {
-      const text = theme.fg("accent", snapshot.agent)
-        + theme.fg("muted", ` · ${compactPreview(snapshot.task, 80)}`);
-      return new Text("\n" + text, 0, 0);
-    }
-    return renderSubagentTree(snapshot, theme, options.expanded, renderActivityTitle);
+    const text = theme.fg("accent", snapshot.agent)
+      + theme.fg("muted", ` · ${compactPreview(snapshot.task, 80)}`);
+    return new Text("\n" + text, 0, 0);
   }
 
-  if (action === "wait") {
+  if (action === "inspect") {
     if (context.isError) return errorComponent(result, theme);
-    return renderLevelTree(details?.snapshots ?? [], theme, options.expanded, renderActivityTitle);
+    const snapshot = details?.snapshot;
+    if (!snapshot) return new Text("", 0, 0);
+    return renderLevelTree([snapshot], theme, options.expanded, renderActivityTitle);
+  }
+
+  if (action === "history") {
+    if (context.isError) return errorComponent(result, theme);
+    return new Text("", 0, 0);
+  }
+
+  if (action === "steer") {
+    if (context.isError) return errorComponent(result, theme);
+    return new Text("", 0, 0);
   }
 
   if (action === "cancel") {
@@ -101,7 +101,9 @@ export function renderResult(
     const count = details?.count ?? 0;
     const text = count === 0
       ? "No subagent is active yet"
-      : `${count} active subagent${count === 1 ? "" : "s"}`;
+      : details?.all === true
+        ? `${count} direct subagent${count === 1 ? "" : "s"} (including completed)`
+        : `${count} active subagent${count === 1 ? "" : "s"}`;
     return new Text("\n" + theme.fg("muted", text), 0, 0);
   }
   if (action === "list-sessions") {

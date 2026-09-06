@@ -43,10 +43,17 @@ export function createSubagentTool(
     if (!service || !catalog) throw new Error("subagent tool is unavailable outside an active session");
     return [service, catalog];
   };
+  const requireSubagentId = (params: Record<string, unknown>): string => {
+    const subagentId = params.subagentId;
+    if (typeof subagentId !== "string" || subagentId.length === 0) {
+      throw new Error(`action '${params.action}' requires subagentId`);
+    }
+    return subagentId;
+  };
   return {
     name: "subagent",
     label: "subagent",
-    description: "Run and manage configured subagents and their sessions.",
+    description: "Run and manage configured subagents and their sessions. The subagents will run in the background. You will be notified when they complete.",
     parameters: actionSchema(),
     async execute(toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
       const [service, caller] = resolve();
@@ -63,13 +70,12 @@ export function createSubagentTool(
             latestSnapshot = snapshot;
             onUpdate?.({
               content: [],
-              details: { action, async: request.async === true, subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, snapshot },
+              details: { action, subagentId: snapshot.subagentId, sessionId: snapshot.sessionId, snapshot },
             });
           },
         } as RunEnvironment);
         return textResult(result.result, {
           action,
-          async: request.async === true,
           subagentId: result.subagentId,
           sessionId: result.sessionId,
           snapshot: latestSnapshot,
@@ -77,27 +83,37 @@ export function createSubagentTool(
       }
       if (action === "list-definitions") return textResult(caller.discovery, { action, count: caller.definitions.length });
       if (action === "list-subagents") {
-        const entries = service.listSubagents();
-        return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
+        const all = (params as unknown as { all?: boolean }).all === true;
+        const entries = service.listSubagents(all);
+        return textResult(JSON.stringify(entries, null, 2), { action, all, count: entries.length });
       }
       if (action === "list-sessions") {
         const entries = await service.listSessions();
         return textResult(JSON.stringify(entries, null, 2), { action, count: entries.length });
       }
-      if (action === "wait") {
-        const ids = (params as unknown as { subagentIds: string[] }).subagentIds;
-        let latest: readonly SubagentSnapshot[] = [];
-        await service.wait(ids, (snapshots) => {
-          latest = snapshots;
-          onUpdate?.({
-            content: [],
-            details: { action: "wait", snapshots },
-          });
-        });
-        return textResult("wait complete", { action: "wait", snapshots: latest });
+      if (action === "inspect") {
+        const subagentId = requireSubagentId(params as unknown as Record<string, unknown>);
+        const snapshot = service.snapshotOrLast(subagentId);
+        return textResult(JSON.stringify(service.inspectSubagent(subagentId), null, 2), { action, subagentId, snapshot });
+      }
+      if (action === "history") {
+        const { subagentId, messageId, offset, limit } = params as unknown as {
+          subagentId: string;
+          messageId?: string;
+          offset?: number;
+          limit?: number;
+        };
+        const page = await service.historyMessages(subagentId, { messageId, offset, limit });
+        return textResult(JSON.stringify(page, null, 2), { action, subagentId, snapshot: service.snapshotOrLast(subagentId) });
+      }
+      if (action === "steer") {
+        const { subagentId, text } = params as unknown as { subagentId: string; text: string };
+        if (typeof text !== "string" || text.trim().length === 0) throw new Error("steer requires nonempty text");
+        await service.steer(subagentId, text);
+        return textResult(`Steered subagent ${subagentId}.`, { action, subagentId, snapshot: service.snapshotOrLast(subagentId) });
       }
       if (action === "cancel") {
-        const subagentId = (params as unknown as { subagentId: string }).subagentId;
+        const subagentId = requireSubagentId(params as unknown as Record<string, unknown>);
         onUpdate?.({
           content: [],
           details: { action: "cancel", snapshot: service.snapshotOrLast(subagentId) },

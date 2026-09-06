@@ -66,6 +66,7 @@ async function harness(options: { fail?: Error; output?: unknown[] } = {}) {
     catalog,
     store,
     history,
+    messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) },
     runtimeFactory: { start: vi.fn(async (invocation) => { invocations.push(invocation); return run; }) },
     toolFactory: () => undefined,
     persistOwnership: vi.fn(async () => undefined),
@@ -81,9 +82,9 @@ describe("history recording on run completion", () => {
       { agent: "worker", task: "do the thing", prompt: "do it now" },
       { cwd: "/project", creatorModel: {} },
     );
+    await vi.waitFor(() => expect(h.history.record(response.subagentId!)).toBeDefined());
 
     const record = h.history.record(response.subagentId!);
-    expect(record).toBeDefined();
     expect(record!.snapshot.state).toBe("finished");
     expect(record!.snapshot.agent).toBe("worker");
     expect(record!.snapshot.task).toBe("do the thing");
@@ -95,12 +96,12 @@ describe("history recording on run completion", () => {
 
   it("records failed runs too", async () => {
     const h = await harness({ fail: new Error("boom") });
-    await expect(h.service.run(
+    await h.service.run(
       { agent: "worker", task: "t", prompt: "p" },
       { cwd: "/project", creatorModel: {} },
-    )).rejects.toThrow();
+    );
 
-    expect(h.history.roots().some((s) => s.state === "failed")).toBe(true);
+    await vi.waitFor(() => expect(h.history.roots().some((s) => s.state === "failed")).toBe(true));
   });
 
   it("writes only a completion boundary for nested services", async () => {
@@ -113,6 +114,7 @@ describe("history recording on run completion", () => {
       history: h.history,
       coordinator,
       parentId: parent.subagentId,
+      messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) },
       runtimeFactory: { start: vi.fn(async () => h.run) },
       toolFactory: () => undefined,
       persistOwnership: vi.fn(async () => undefined),
@@ -124,8 +126,8 @@ describe("history recording on run completion", () => {
     );
 
     expect(h.history.roots()).toEqual([]);
+    await vi.waitFor(() => expect(h.history.boundary(response.subagentId!)).toBeDefined());
     const boundary = h.history.boundary(response.subagentId!);
-    expect(boundary).toBeDefined();
     expect(boundary!.endCount).toBe(3);
     expect(boundary!.sessionId).toBe(response.sessionId);
   });

@@ -18,14 +18,14 @@ function fakePi() {
 const notice = (agent: string) => ({ agent, state: "finished" as const, subagentId: `id-${agent}`, sessionId: `session-${agent}`, result: `${agent} result`, elapsedMs: 10 });
 
 describe("parent messenger delivery", () => {
-  it("delivers an idle completion immediately and merges busy-loop completions into one queued message", async () => {
+  it("delivers an idle completion as a follow-up that starts a new turn, and merges busy-loop completions into one queued message", async () => {
     const { pi, emit } = fakePi();
     const messenger = createCompletionMessenger(pi as never);
 
     await messenger.send(notice("one"));
     expect(pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ details: notice("one") }),
-      { deliverAs: "steer", triggerTurn: true },
+      { deliverAs: "followUp", triggerTurn: true },
     );
 
     await emit("agent_start");
@@ -58,6 +58,25 @@ describe("parent messenger delivery", () => {
     expect(pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ details: [notice("one")] }),
       { deliverAs: "followUp", triggerTurn: true },
+    );
+  });
+
+  it("delivers reminders model-visibly but never user-rendered, steering while streaming and following up when idle", async () => {
+    const { pi, emit } = fakePi();
+    const messenger = createCompletionMessenger(pi as never);
+    const reminder = { text: "progress", subagentIds: ["id-one"] };
+
+    await messenger.sendReminder(reminder);
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ customType: "subagent-reminder", display: false, details: reminder }),
+      { deliverAs: "followUp", triggerTurn: true },
+    );
+
+    await emit("agent_start");
+    await messenger.sendReminder(reminder);
+    expect(pi.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ display: false }),
+      { deliverAs: "steer", triggerTurn: true },
     );
   });
 

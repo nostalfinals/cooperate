@@ -226,6 +226,38 @@ describe("Pi child runtime adapter", () => {
     expect(session.dispose).toHaveBeenCalledOnce();
   });
 
+  it("re-prompts an idle session on steer instead of parking the message in the steering queue", async () => {
+    const session = {
+      messages: [],
+      getAllTools: () => [],
+      getActiveToolNames: () => [],
+      setActiveToolsByName: vi.fn(),
+      bindExtensions: vi.fn(async () => undefined),
+      prompt: vi.fn(), abort: vi.fn(), dispose: vi.fn(),
+      isStreaming: false,
+      steer: vi.fn(async () => undefined),
+    };
+    const factory = new PiChildRuntimeFactory({
+      createServices: async () => ({ modelRuntime: { getModel: () => undefined }, settingsManager: { getDefaultThinkingLevel: () => "medium" as const } }),
+      createSession: async () => ({ session, dispose: async () => session.dispose() }),
+    });
+
+    const run = await factory.start({
+      cwd: "/project",
+      definition: { ...baseDefinition, tools: [] },
+      callerCatalog: emptyCaller,
+      record: { sessionId: "id", file: "/id", native: {} },
+      creatorModel: {},
+      task: "task",
+    });
+
+    await run.steer!("change course");
+    expect(session.prompt).toHaveBeenCalledWith("change course");
+    session.isStreaming = true;
+    await run.steer!("while running");
+    expect(session.steer).toHaveBeenCalledWith("while running");
+  });
+
   it("adds an awaited agent_end hook for the child's structured descendant scope", async () => {
     let extensionFactories: Array<{ factory: (pi: any) => void }> | undefined;
     let endHandler: ((event: { messages: any[] }) => Promise<void>) | undefined;

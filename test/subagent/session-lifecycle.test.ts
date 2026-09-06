@@ -41,7 +41,7 @@ function harness() {
     catalog,
     store,
     toolFactory: () => undefined,
-    messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined) },
+    messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) },
     runtimeFactory: {
       start: vi.fn(async () => {
         const gate = deferred();
@@ -65,16 +65,16 @@ function harness() {
 describe("Pi session lifecycle cancellation", () => {
   it("awaits cancellation for tree navigation but keeps the session service reusable", async () => {
     const h = harness();
-    await h.service.run({ agent: "worker", task: "first", prompt: "first", async: true }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "worker", task: "first", prompt: "first" }, { cwd: "/project", creatorModel: {} });
 
     await h.service.cancelActive("tree navigation");
     expect(h.runs[0]!.abort).toHaveBeenCalledOnce();
     expect(h.service.listSubagents()).toEqual([]);
 
-    const second = h.service.run({ agent: "worker", task: "second", prompt: "second" }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "worker", task: "second", prompt: "second" }, { cwd: "/project", creatorModel: {} });
     await vi.waitFor(() => expect(h.runs).toHaveLength(2));
+    expect(h.runs[1]!.prompt).toHaveBeenCalledWith("second");
     h.gates[1]!.resolve();
-    await expect(second).resolves.toMatchObject({ sessionId: "session-2", result: expect.any(String) });
   });
 
   it("opens a crash-left native session as unlocked and resumable in a fresh runtime", async () => {
@@ -90,6 +90,7 @@ describe("Pi session lifecycle cancellation", () => {
       const freshService = new SubagentService({
         catalog, store: freshStore, runtimeFactory: { start: vi.fn(async () => run) },
         toolFactory: () => undefined,
+        messenger: { waitForStartupCommit: async () => undefined, send: vi.fn(async () => undefined), sendReminder: vi.fn(async () => undefined) },
         persistOwnership: vi.fn(async () => undefined), visibleSessionIds: () => [crashLeft.sessionId],
       });
 
@@ -99,7 +100,7 @@ describe("Pi session lifecycle cancellation", () => {
       await expect(freshService.run(
         { agent: "worker", task: "resume", prompt: "resume", sessionId: crashLeft.sessionId },
         { cwd: "/project", creatorModel: {} },
-      )).resolves.toMatchObject({ sessionId: crashLeft.sessionId, result: expect.any(String) });
+      )).resolves.toMatchObject({ sessionId: crashLeft.sessionId });
     } finally {
       await rm(agentDir, { recursive: true, force: true });
     }
@@ -107,7 +108,7 @@ describe("Pi session lifecycle cancellation", () => {
 
   it("permanently rejects starts after shutdown and recognizes only an aborted terminal assistant turn", async () => {
     const h = harness();
-    await h.service.run({ agent: "worker", task: "active", prompt: "active", async: true }, { cwd: "/project", creatorModel: {} });
+    await h.service.run({ agent: "worker", task: "active", prompt: "active", }, { cwd: "/project", creatorModel: {} });
     await h.service.shutdown();
     await expect(h.service.run({ agent: "worker", task: "late", prompt: "late" }, { cwd: "/project", creatorModel: {} })).rejects.toThrow();
 
