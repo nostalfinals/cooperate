@@ -24,6 +24,7 @@ export class SubagentsPanel implements Component {
     this.ctx = {
       theme: options.theme,
       maxVisible,
+      terminalRows: options.terminalRows,
       snapshots: () => options.snapshots(),
       detailSnapshot: () => (this.detailId
         ? (this.tab === "history" ? options.historyDetail(this.detailId)?.snapshot : options.snapshotOf(this.detailId))

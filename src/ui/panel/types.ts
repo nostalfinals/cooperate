@@ -32,6 +32,8 @@ export interface PanelOptions {
 export interface PanelContext {
   theme: Theme;
   maxVisible: number;
+  /** Terminal height, for viewport sizing in scrollable views. */
+  terminalRows: number;
   snapshots(): readonly SubagentSnapshot[];
   detailSnapshot(): SubagentSnapshot | undefined;
   getTree(subagentId: string): readonly SessionTreeNode[] | undefined;
@@ -71,6 +73,9 @@ export interface PanelView {
   stale?(): boolean;
 }
 
-export function key(data: string, name: "up" | "down" | "enter" | "escape" | "left" | "right"): boolean {
+export function key(
+  data: string,
+  name: "up" | "down" | "enter" | "escape" | "left" | "right" | "pageUp" | "pageDown" | "home" | "end",
+): boolean {
   return matchesKey(data, name);
 }

@@ -110,6 +110,12 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
             startTimer: true,
             terminalRows: tui.terminal.rows,
           });
+        }, {
+          // Overlay mode: in fullscreen TUI mode the alt-screen layer otherwise
+          // consumes PgUp/PgDn/Home/End to scroll the transcript before the
+          // focused component sees them; a focused overlay makes it defer.
+          overlay: true,
+          overlayOptions: { width: "100%", maxHeight: "100%", anchor: "bottom-left", margin: { bottom: 1 } },
         });
       },
     });
