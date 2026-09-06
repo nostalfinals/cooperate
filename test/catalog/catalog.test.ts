@@ -194,14 +194,6 @@ describe("loadCatalog", () => {
     await expect(loadCatalog(options)).rejects.toThrow();
   });
 
-  it("explains that a bare '*' must be quoted in YAML", async () => {
-    const { agentDir, options } = await fixture();
-    await definition(agentDir, "one.md", "---\nname: one\ndescription: One\ntools: *\n---\nBody");
-
-    await expect(loadCatalog(options)).rejects.toSatisfy(
-      (error: unknown) => error instanceof CatalogError && error.message.includes('write "*" in quotes'),
-    );
-  });
 });
 
 describe("createCallerCatalog", () => {

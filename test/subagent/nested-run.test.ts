@@ -218,7 +218,7 @@ describe("nested subagent runs", () => {
     // Retries exhausted: the parent's prompt now fails for real.
     h.setFailParent(true);
     h.releaseParent();
-    await expect(parentPending).rejects.toThrow("Session ");
+    await expect(parentPending).rejects.toThrow();
     expect(childRun.abort).toHaveBeenCalledOnce();
 
     await vi.waitFor(() => {

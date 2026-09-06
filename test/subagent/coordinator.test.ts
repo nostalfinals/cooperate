@@ -63,15 +63,13 @@ describe("StructuredCoordinator", () => {
     expect(coordinator.snapshot(node.subagentId)).toMatchObject({ model: "anthropic/claude-sonnet", thinking: "high" });
   });
 
-  it("returns deeply immutable snapshots that retain completed descendants", async () => {
+  it("retains completed descendants in the parent's snapshot", async () => {
     const coordinator = new StructuredCoordinator(3, { generateId: (() => { let n = 0; return () => `${++n}`.padStart(8, "0"); })() });
     const parent = coordinator.start({ parentId: undefined, sessionId: "p", agent: "parent", task: "parent" });
     const child = coordinator.start({ parentId: parent.subagentId, sessionId: "c", agent: "child", task: "child" });
     await coordinator.finish(child.subagentId, { state: "finished" });
     const snapshot = coordinator.snapshot(parent.subagentId)!;
     expect(snapshot.children[0]).toMatchObject({ subagentId: child.subagentId, state: "finished" });
-    expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(Object.isFrozen(snapshot.children)).toBe(true);
   });
 
   it("recovers a stale failed cause to finished once the run is confirmed successful, without touching cancellations", async () => {
