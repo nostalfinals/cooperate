@@ -65,76 +65,68 @@ function reminderContent(reminder: ReminderNotice): string {
  * instead of parking them in the steer queue forever.
  */
 function selectDelivery(isIdle: boolean, ending: boolean): "steer" | "followUp" {
-  if (isIdle || ending) return "followUp";
-  return "steer";
+  return isIdle || ending ? "followUp" : "steer";
 }
+
+const IDLE_BATCH_DELAY_MS = 250;
 
 export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
   let busy = false;
   let ending = false;
-  let queuedBatch: { notices: CompletionNotice[]; content: { type: "text"; text: string } } | undefined;
+  let idleBatchTimer: ReturnType<typeof setTimeout> | undefined;
   let lastCtx: Pick<ExtensionContext, "isIdle"> | undefined;
+  const pendingNotices: CompletionNotice[] = [];
   const commits = new Map<string, Deferred>();
 
   const isIdle = (): boolean => (lastCtx ? lastCtx.isIdle() : !busy);
-  const deliver = (notice: CompletionNotice, deliverAs: "steer" | "followUp") => {
+  const clearIdleBatchTimer = () => {
+    if (idleBatchTimer === undefined) return;
+    clearTimeout(idleBatchTimer);
+    idleBatchTimer = undefined;
+  };
+  const flush = () => {
+    clearIdleBatchTimer();
+    // A steering message delivered after the loop's final queue poll is never
+    // consumed. Keep notices until agent_end, where Pi explicitly supports a
+    // follow-up continuation from an extension handler.
+    if (pendingNotices.length === 0 || (!isIdle() && !ending)) return;
+    const notices = pendingNotices.splice(0);
     pi.sendMessage({
       customType: COMPLETION_MESSAGE,
-      content: completionContent(notice),
+      content: [{ type: "text", text: bounded(notices.map(completionContent).join("\n\n")) }],
       display: true,
-      details: notice,
+      details: notices,
     }, {
-      deliverAs,
+      deliverAs: "followUp",
       triggerTurn: true,
     });
   };
-  const queueBusy = (notice: CompletionNotice) => {
-    const deliverAs = selectDelivery(isIdle(), ending);
-    if (queuedBatch) {
-      queuedBatch.notices.push(notice);
-      queuedBatch.content.text = bounded(`${queuedBatch.content.text}\n\n${completionContent(notice)}`);
-      return;
-    }
-    const batch = {
-      notices: [notice],
-      content: { type: "text" as const, text: completionContent(notice) },
-    };
-    queuedBatch = batch;
-    pi.sendMessage({
-      customType: COMPLETION_MESSAGE,
-      content: [batch.content],
-      display: true,
-      details: batch.notices,
-    }, {
-      deliverAs,
-      triggerTurn: true,
-    });
+  const scheduleIdleFlush = () => {
+    if (idleBatchTimer !== undefined || pendingNotices.length === 0) return;
+    idleBatchTimer = setTimeout(flush, IDLE_BATCH_DELAY_MS);
   };
-
   const captureCtx = (ctx: Pick<ExtensionContext, "isIdle"> | undefined) => {
     if (ctx) lastCtx = ctx;
   };
   pi.on("agent_start", (_event, ctx) => {
     captureCtx(ctx);
+    clearIdleBatchTimer();
     busy = true;
     ending = false;
   });
   pi.on("agent_end", (_event, ctx) => {
     captureCtx(ctx);
     ending = true;
+    flush();
   });
   pi.on("agent_settled", (_event, ctx) => {
     captureCtx(ctx);
     busy = false;
     ending = false;
+    scheduleIdleFlush();
   });
-  pi.on("message_start", (event, ctx) => {
+  pi.on("message_start", (_event, ctx) => {
     captureCtx(ctx);
-    const message = event.message as { role?: string; customType?: string; details?: unknown };
-    if (message.role === "custom" && message.customType === COMPLETION_MESSAGE
-      && message.details === queuedBatch?.notices) {
-      queuedBatch = undefined;
-    }
   });
   pi.on("message_end", (event, ctx) => {
     captureCtx(ctx);
@@ -156,11 +148,12 @@ export function createCompletionMessenger(pi: ExtensionAPI): Messenger {
       return pending.promise;
     },
     async send(notice) {
-      if (isIdle()) {
-        deliver(notice, "followUp");
-        return;
+      pendingNotices.push(notice);
+      if (ending) {
+        flush();
+      } else if (isIdle()) {
+        scheduleIdleFlush();
       }
-      queueBusy(notice);
     },
     async sendReminder(reminder) {
       pi.sendMessage({
