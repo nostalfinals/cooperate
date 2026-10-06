@@ -13,7 +13,6 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createCompletionMessenger } from "../subagent/messenger.ts";
-import { subagentRoleBlock } from "../prompt.ts";
 import { includesEntry, resolveEntries, WILDCARD, type AgentDefinition } from "../catalog/definitions.ts";
 import type { ChildRuntimeFactory, ModelRuntimeLike, SubagentInvocation, SubagentRun } from "./types.ts";
 
@@ -47,7 +46,6 @@ interface RuntimeSdk {
     cwd: string;
     agentDir?: string;
     resourceLoaderOptions: {
-      appendSystemPromptOverride: (base: string[]) => string[];
       extensionFactories?: InlineExtension[];
       extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
     };
@@ -162,18 +160,20 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
 
   async start(invocation: SubagentInvocation): Promise<SubagentRun> {
     const systemPromptMode = invocation.definition.systemPromptMode ?? "append";
-    const roleBlock = systemPromptMode === "append" ? subagentRoleBlock(invocation.definition.body) : undefined;
-    const discoveryBlocks = includesEntry(invocation.definition.tools, "subagent")
-      ? [invocation.callerCatalog.discovery]
-      : [];
     const lifecycleExtension: InlineExtension = {
       name: "cooperate-subagent-extension",
       hidden: true,
       factory: (pi) => {
         invocation.onMessenger?.(createCompletionMessenger(pi));
-        if (systemPromptMode === "override") {
-          pi.on("before_agent_start", () => ({ systemPrompt: invocation.definition.body }));
-        }
+        pi.on("before_agent_start", (event) => {
+          if (systemPromptMode === "override") return { systemPrompt: invocation.definition.body };
+          if (includesEntry(invocation.definition.tools, "subagent")) {
+            event.systemPromptOptions.sections.subagent_definitions = invocation.callerCatalog.discovery;
+          }
+          if (invocation.definition.body.trim()) {
+            event.systemPromptOptions.sections.subagent_role = invocation.definition.body;
+          }
+        });
         pi.on("tool_call", (event) => {
           invocation.onActivity?.({ toolName: event.toolName, input: event.input as Record<string, unknown> });
         });
@@ -190,13 +190,6 @@ export class PiChildRuntimeFactory implements ChildRuntimeFactory {
       cwd: invocation.cwd,
       agentDir: invocation.agentDir,
       resourceLoaderOptions: {
-        appendSystemPromptOverride: (base) => systemPromptMode === "override"
-          ? base
-          : [
-              ...discoveryBlocks,
-              ...base,
-              ...(roleBlock ? [roleBlock] : []),
-            ],
         extensionFactories: [lifecycleExtension],
         extensionsOverride: excludeAmbientCooperate,
       },

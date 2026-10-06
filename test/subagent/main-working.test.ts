@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createCooperateExtension } from "../../src/index.ts";
 import * as catalogs from "../../src/catalog/catalog.ts";
 
@@ -25,11 +25,12 @@ async function harness() {
   const controller = new AbortController();
   const ctx = {
     cwd: agentDir, model: {}, modelRegistry: {}, signal: controller.signal,
+    tools: [], executeTool: vi.fn(),
     isIdle: () => false, hasPendingMessages: () => false,
     sessionManager: {
       getSessionId: () => "master", getSessionDir: () => agentDir, getBranch: () => [],
     },
-  } as unknown as ExtensionContext;
+  } as unknown as ExtensionToolContext;
   const runs: Array<{ finish(): void; abort: ReturnType<typeof vi.fn> }> = [];
   const pi = {
     on: (event: string, handler: (event: never, ctx: ExtensionContext) => unknown) => {

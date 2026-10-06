@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import type { LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
+import type { InlineExtension, LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentDefinition } from "../../src/catalog/definitions.ts";
 import type { CallerCatalog } from "../../src/catalog/types.ts";
@@ -20,6 +20,20 @@ const baseDefinition: AgentDefinition = {
   filePath: "/defs/worker.md",
 };
 
+function promptSections(extensions: InlineExtension[] | undefined) {
+  const options = { cwd: "/project", appendSystemPrompt: "global", sections: { other: "existing" } as Record<string, string> };
+  let beforeStart: ((event: unknown) => unknown) | undefined;
+  const extension = extensions?.[0];
+  const factory = typeof extension === "function" ? extension : extension?.factory;
+  factory?.({ on: (event: string, handler: typeof beforeStart) => {
+    if (event === "before_agent_start") beforeStart = handler;
+  } } as never);
+  beforeStart?.({ systemPromptOptions: options });
+  expect(options.appendSystemPrompt).toBe("global");
+  expect(options.sections.other).toBe("existing");
+  return options.sections;
+}
+
 describe("invocation prompt resolution", () => {
   it("prefers the definition model and thinking, otherwise creator model and global thinking then medium", () => {
     const explicit = { ...baseDefinition, model: { provider: "p", modelId: "m", reference: "p/m" }, thinking: "high" as const };
@@ -37,9 +51,9 @@ describe("invocation prompt resolution", () => {
 });
 
 describe("Pi child runtime adapter", () => {
-  it("loads normal resources, appends the definition role block in the native slot, binds extensions, and activates exact tools", async () => {
+  it("loads normal resources, sets the role section, binds extensions, and activates exact tools", async () => {
     let resourceOptions: {
-      appendSystemPromptOverride?: (base: string[]) => string[];
+      extensionFactories?: InlineExtension[];
       extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
     } | undefined;
     let sessionOptions: Record<string, unknown> | undefined;
@@ -76,9 +90,7 @@ describe("Pi child runtime adapter", () => {
       task: "isolated task",
     });
 
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual([
-      "global", "project", expect.stringContaining("definition body"),
-    ]);
+    expect(promptSections(resourceOptions?.extensionFactories)).toEqual({ other: "existing", subagent_role: baseDefinition.body });
     const ambientPath = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
     const extensions = [
       { resolvedPath: ambientPath },
@@ -136,7 +148,7 @@ describe("Pi child runtime adapter", () => {
 
   it("inherits enabled tools for the '*' wildcard without enabling optional built-ins", async () => {
     let sessionOptions: Record<string, unknown> | undefined;
-    let resourceOptions: { appendSystemPromptOverride?: (base: string[]) => string[] } | undefined;
+    let resourceOptions: { extensionFactories?: InlineExtension[] } | undefined;
     let activeToolNames = ["read", "bash", "extra"];
     const session = {
       messages: [],
@@ -170,9 +182,9 @@ describe("Pi child runtime adapter", () => {
     });
 
     expect(sessionOptions).toMatchObject({ tools: undefined, customTools: [expect.anything()] });
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      emptyCaller.discovery, "global", expect.stringContaining("definition body"),
-    ]);
+    expect(promptSections(resourceOptions?.extensionFactories)).toEqual({
+      other: "existing", subagent_definitions: emptyCaller.discovery, subagent_role: baseDefinition.body,
+    });
     expect(session.setActiveToolsByName).toHaveBeenCalledWith(["read", "bash", "extra"]);
   });
 
@@ -300,9 +312,8 @@ describe("Pi child runtime adapter", () => {
     await pending;
   });
 
-  it("wraps a nonblank append body in a role block and omits the block when blank", async () => {
+  it("sets the role section for a nonblank append body and omits it when blank", async () => {
     let resourceOptions: {
-      appendSystemPromptOverride?: (base: string[]) => string[];
       extensionFactories?: Array<{ factory: (pi: any) => void }>;
     } | undefined;
     const session = {
@@ -329,23 +340,16 @@ describe("Pi child runtime adapter", () => {
       task: "task",
     });
 
-    await start({ ...baseDefinition, tools: [], body: "\nAct as a focused worker.\r\nStay concise.\n" });
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      "global", "<subagent_role>\nAct as a focused worker.\r\nStay concise.\n</subagent_role>",
-    ]);
-    const handlers = new Map<string, (...args: any[]) => unknown>();
-    resourceOptions?.extensionFactories?.[0]?.factory({ on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler) });
-    expect(handlers.has("before_agent_start")).toBe(false);
+    const body = "\nAct as a focused worker.\r\nStay concise.\n";
+    await start({ ...baseDefinition, tools: [], body });
+    expect(promptSections(resourceOptions?.extensionFactories as InlineExtension[])).toEqual({ other: "existing", subagent_role: body });
 
     await start({ ...baseDefinition, tools: [], body: "   \n" });
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global"])).toEqual([
-      "global",
-    ]);
+    expect(promptSections(resourceOptions?.extensionFactories as InlineExtension[])).toEqual({ other: "existing" });
   });
 
   it("replaces the entire system prompt with the definition body in override mode", async () => {
     let resourceOptions: {
-      appendSystemPromptOverride?: (base: string[]) => string[];
       extensionFactories?: Array<{ factory: (pi: any) => void }>;
     } | undefined;
     const session = {
@@ -373,7 +377,6 @@ describe("Pi child runtime adapter", () => {
       task: "task",
     });
 
-    expect(resourceOptions?.appendSystemPromptOverride?.(["global", "project"])).toEqual(["global", "project"]);
     let startHandler: ((event: { systemPrompt: string }) => { systemPrompt: string }) | undefined;
     resourceOptions?.extensionFactories?.[0]?.factory({
       on: (event: string, handler: typeof startHandler) => { if (event === "before_agent_start") startHandler = handler; },
@@ -383,7 +386,6 @@ describe("Pi child runtime adapter", () => {
 
   it("allows an empty system prompt when the override body is blank", async () => {
     let resourceOptions: {
-      appendSystemPromptOverride?: (base: string[]) => string[];
       extensionFactories?: Array<{ factory: (pi: any) => void }>;
     } | undefined;
     const session = {

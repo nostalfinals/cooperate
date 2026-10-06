@@ -6,7 +6,6 @@ import {
 import { createCallerCatalog, loadCatalog } from "./catalog/catalog.ts";
 import type { DefinitionCatalog } from "./catalog/definitions.ts";
 import { COMPLETION_MESSAGE, createCompletionMessenger } from "./subagent/messenger.ts";
-import { injectDefinitionDiscovery } from "./prompt.ts";
 import { PiChildRuntimeFactory } from "./runtime/runtime.ts";
 import type { ChildRuntimeFactory } from "./runtime/types.ts";
 import { isAbortedAgentEnd } from "./subagent/result.ts";
@@ -187,10 +186,7 @@ export function createCooperateExtension(options: CooperateExtensionOptions = {}
 
     pi.on("before_agent_start", (event) => {
       if (!state) return undefined;
-      const discovery = createCallerCatalog(state.catalog).discovery;
-      return {
-        systemPrompt: injectDefinitionDiscovery(event.systemPrompt, event.systemPromptOptions, discovery),
-      };
+      event.systemPromptOptions.sections.subagent_definitions = createCallerCatalog(state.catalog).discovery;
     });
 
     pi.on("agent_end", async (event, ctx) => {

@@ -6,7 +6,6 @@ import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import { createCallerCatalog, formatDefinitionDiscovery } from "../../src/catalog/catalog.ts";
 import type { DefinitionCatalog } from "../../src/catalog/definitions.ts";
 import { createCooperateExtension } from "../../src/index.ts";
-import { injectDefinitionDiscovery } from "../../src/prompt.ts";
 import { createSubagentTool } from "../../src/tool/subagent-tool.ts";
 
 const catalog: DefinitionCatalog = {
@@ -22,22 +21,8 @@ const catalog: DefinitionCatalog = {
 const options = (overrides: Partial<BuildSystemPromptOptions> = {}): BuildSystemPromptOptions => ({
   cwd: "/project",
   selectedTools: ["read"],
+  sections: {},
   ...overrides,
-});
-
-describe("Definition discovery text", () => {
-  it("injects discovery at the native append boundary without duplicating it", () => {
-    const prompt = "Base\n\nExisting append\n\n<project_context>\ncontext\n</project_context>\nCurrent working directory: /project";
-    const discovery = formatDefinitionDiscovery(createCallerCatalog(catalog).definitions);
-    const structured = options({ appendSystemPrompt: "Existing append", contextFiles: [{ path: "/project/AGENTS.md", content: "context" }] });
-
-    const injected = injectDefinitionDiscovery(prompt, structured, discovery);
-
-    expect(injected.indexOf(discovery)).toBeGreaterThan(-1);
-    expect(injected.indexOf(discovery)).toBeLessThan(injected.indexOf("Existing append"));
-    expect(injectDefinitionDiscovery(injected, structured, discovery)).toBe(injected);
-    expect(injectDefinitionDiscovery(injected, structured, "No subagent is defined yet")).toBe(injected);
-  });
 });
 
 describe("Definition discovery action", () => {
@@ -58,7 +43,7 @@ describe("Definition discovery action", () => {
 });
 
 describe("main prompt discovery", () => {
-  it("adds the full catalog before existing append content while preserving chained prompt changes", async () => {
+  it("sets the full catalog section without replacing other prompt state", async () => {
     const agentDir = await mkdtemp(join(tmpdir(), "cooperate-discovery-"));
     try {
       const definitions = join(agentDir, "cooperate", "subagents");
@@ -91,19 +76,18 @@ describe("main prompt discovery", () => {
       });
 
       const before = handlers.get("before_agent_start")?.[0];
-      const result = (await before?.({
-        systemPrompt: "Earlier extension\nBase\n\nExisting append\nCurrent working directory: /project",
-        systemPromptOptions: options({ appendSystemPrompt: "Existing append" }),
-      }, {})) as { systemPrompt?: string } | undefined;
-      const systemPrompt = result?.systemPrompt ?? "";
+      const structured = options({ appendSystemPrompt: "Existing append", sections: { other: "Earlier extension" } });
+      const result = await before?.({ systemPromptOptions: structured }, {});
       const discovery = formatDefinitionDiscovery([
         { name: "worker", description: "General work" },
         { name: "scout", description: "Search only" },
       ]);
 
-      expect(systemPrompt.startsWith("Earlier extension\nBase")).toBe(true);
-      expect(systemPrompt.indexOf(discovery)).toBeGreaterThan(-1);
-      expect(systemPrompt.indexOf(discovery)).toBeLessThan(systemPrompt.indexOf("Existing append"));
+      expect(result).toBeUndefined();
+      expect(structured.sections).toEqual({ other: "Earlier extension", subagent_definitions: discovery });
+      expect(structured.appendSystemPrompt).toBe("Existing append");
+      await before?.({ systemPromptOptions: structured }, {});
+      expect(structured.sections).toEqual({ other: "Earlier extension", subagent_definitions: discovery });
     } finally {
       await rm(agentDir, { recursive: true, force: true });
     }
